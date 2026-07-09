@@ -1,0 +1,16 @@
+2026-06-16 11:11:58,962 - main - INFO - === Logging system initialized ===
+2026-06-16 11:11:58,962 - main - INFO - Log file: logs/app_20260616_111158.log
+2026-06-16 11:11:58,962 - main - INFO - Log level: INFO
+2026-06-16 11:11:58,962 - main - INFO - Timestamp: 20260616_111158
+2026-06-16 11:11:59,931 - main - INFO - Included router: routers.aihub.router
+2026-06-16 11:11:59,955 - main - INFO - Included router: routers.analysis.router
+2026-06-16 11:11:59,969 - main - INFO - Included router: routers.auth.router
+2026-06-16 11:11:59,981 - main - INFO - Included router: routers.custom_auth.router
+2026-06-16 11:12:00,022 - main - INFO - Included router: routers.doctor_patients.router
+2026-06-16 11:12:00,068 - main - INFO - Included router: routers.health.router
+2026-06-16 11:12:00,122 - main - INFO - Included router: routers.invite.router
+2026-06-16 11:12:00,136 - main - INFO - Included router: routers.reports.router
+2026-06-16 11:12:00,156 - main - INFO - Included router: routers.settings.router
+2026-06-16 11:12:00,192 - main - INFO - Included router: routers.storage.router
+2026-06-16 11:12:00,200 - main - INFO - Included router: routers.user.router
+2026-06-16 11:12:00,246 - main - INFO - Included router: routers.users_profiles.router

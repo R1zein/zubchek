@@ -1,0 +1,367 @@
+2026-06-12 11:37:59,815 - main - INFO - === Logging system initialized ===
+2026-06-12 11:37:59,815 - main - INFO - Log file: logs/app_20260612_113759.log
+2026-06-12 11:37:59,815 - main - INFO - Log level: INFO
+2026-06-12 11:37:59,815 - main - INFO - Timestamp: 20260612_113759
+2026-06-12 11:38:00,672 - main - INFO - Included router: routers.aihub.router
+2026-06-12 11:38:00,698 - main - INFO - Included router: routers.analysis.router
+2026-06-12 11:38:00,717 - main - INFO - Included router: routers.auth.router
+2026-06-12 11:38:00,728 - main - INFO - Included router: routers.custom_auth.router
+2026-06-12 11:38:00,775 - main - INFO - Included router: routers.doctor_patients.router
+2026-06-12 11:38:00,777 - main - INFO - Included router: routers.health.router
+2026-06-12 11:38:00,824 - main - INFO - Included router: routers.invite.router
+2026-06-12 11:38:00,837 - main - INFO - Included router: routers.reports.router
+2026-06-12 11:38:00,860 - main - INFO - Included router: routers.settings.router
+2026-06-12 11:38:00,898 - main - INFO - Included router: routers.storage.router
+2026-06-12 11:38:00,910 - main - INFO - Included router: routers.user.router
+2026-06-12 11:38:00,957 - main - INFO - Included router: routers.users_profiles.router
+2026-06-12 11:38:00,958 - main - INFO - === Application startup initiated ===
+2026-06-12 11:38:00,959 - services.database - INFO - Ignore creating tables
+2026-06-12 11:38:00,959 - services.mock_data - INFO - Ignore initialize data
+2026-06-12 11:38:00,959 - services.auth - INFO - Ignore initialize admin
+2026-06-12 11:38:00,959 - main - INFO - === Application startup completed successfully ===
+2026-06-12 11:38:38,246 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-06-12 11:38:38,246 - core.database - WARNING - Database session maker not available, attempting lazy initialization...
+2026-06-12 11:38:38,246 - core.database - WARNING - Database not initialized, attempting lazy initialization...
+2026-06-12 11:38:38,246 - core.database - INFO - Starting database initialization...
+2026-06-12 11:38:38,246 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-06-12 11:38:38,246 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-06-12 11:38:38,247 - core.database - INFO - Creating async database engine...
+2026-06-12 11:38:38,247 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-06-12 11:38:38,291 - core.database - INFO - Database engine created successfully
+2026-06-12 11:38:38,292 - core.database - INFO - Creating async session maker...
+2026-06-12 11:38:38,292 - core.database - INFO - Async session maker created successfully
+2026-06-12 11:38:38,292 - core.database - INFO - Database connection initialized successfully
+2026-06-12 11:38:38,292 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-06-12 11:38:38,292 - core.database - INFO - 🔧 Starting table creation...
+2026-06-12 11:38:39,643 - core.database - INFO - Tables initialized successfully
+2026-06-12 11:38:39,643 - core.database - DEBUG - [DB_OP] Create tables completed in 1.3510s
+2026-06-12 11:38:39,702 - core.database - INFO - Lazy database initialization completed successfully
+2026-06-12 11:38:39,702 - core.database - DEBUG - [DB_OP] Database session created successfully in 1.4568s
+2026-06-12 11:38:40,238 - core.database - DEBUG - [DB_OP] Database session cleanup after 1.9920s
+2026-06-12 11:38:40,513 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-06-12 11:38:40,514 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0003s
+2026-06-12 11:38:40,873 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.3594s
+2026-06-12 11:38:43,109 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-06-12 11:38:43,110 - core.database - DEBUG - [DB_OP] Database session created successfully in 0.0004s
+2026-06-12 11:38:43,582 - core.database - ERROR - Database session error: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) <class 'asyncpg.exceptions.UndefinedColumnError'>: column "user_id" does not exist
+[SQL: 
+            SELECT id, teeth_scores, php_index, hygiene_level, plaque_percentage, risk_level, plaque_types, recommendations, created_at
+            FROM reports WHERE user_id = $1 ORDER BY created_at DESC
+        ]
+[parameters: ('00219baf-ffeb-479c-8664-430154bdb61a',)]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 526, in _prepare_and_execute
+    prepared_stmt, attributes = await adapt_connection._prepare(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 773, in _prepare
+    prepared_stmt = await self._connection.prepare(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/asyncpg/connection.py", line 638, in prepare
+    return await self._prepare(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/asyncpg/connection.py", line 657, in _prepare
+    stmt = await self._get_statement(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/asyncpg/connection.py", line 443, in _get_statement
+    statement = await self._protocol.prepare(
+  File "asyncpg/protocol/protocol.pyx", line 165, in prepare
+asyncpg.exceptions.UndefinedColumnError: column "user_id" does not exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 563, in _prepare_and_execute
+    self._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 513, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.ProgrammingError: <class 'asyncpg.exceptions.UndefinedColumnError'>: column "user_id" does not exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/workspace/app/backend/core/database.py", line 553, in get_db
+    yield session
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/routing.py", line 120, in app
+    response = await f(request)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/routing.py", line 674, in app
+    raw_response = await run_endpoint_function(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/routing.py", line 328, in run_endpoint_function
+    return await dependant.call(**values)
+  File "/workspace/app/backend/routers/invite.py", line 180, in get_patient_reports
+    result = await db.execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/ext/asyncio/session.py", line 448, in execute
+    result = await greenlet_spawn(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2372, in execute
+    return self._execute_internal(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2279, in _execute_internal
+    result = conn.execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 563, in _prepare_and_execute
+    self._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 513, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.exc.ProgrammingError: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) <class 'asyncpg.exceptions.UndefinedColumnError'>: column "user_id" does not exist
+[SQL: 
+            SELECT id, teeth_scores, php_index, hygiene_level, plaque_percentage, risk_level, plaque_types, recommendations, created_at
+            FROM reports WHERE user_id = $1 ORDER BY created_at DESC
+        ]
+[parameters: ('00219baf-ffeb-479c-8664-430154bdb61a',)]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2026-06-12 11:38:43,920 - core.database - DEBUG - [DB_OP] Database session cleanup after 0.8103s
+2026-06-12 11:38:43,980 - core.database - ERROR - Failed to create database session: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) <class 'asyncpg.exceptions.UndefinedColumnError'>: column "user_id" does not exist
+[SQL: 
+            SELECT id, teeth_scores, php_index, hygiene_level, plaque_percentage, risk_level, plaque_types, recommendations, created_at
+            FROM reports WHERE user_id = $1 ORDER BY created_at DESC
+        ]
+[parameters: ('00219baf-ffeb-479c-8664-430154bdb61a',)]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 526, in _prepare_and_execute
+    prepared_stmt, attributes = await adapt_connection._prepare(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 773, in _prepare
+    prepared_stmt = await self._connection.prepare(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/asyncpg/connection.py", line 638, in prepare
+    return await self._prepare(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/asyncpg/connection.py", line 657, in _prepare
+    stmt = await self._get_statement(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/asyncpg/connection.py", line 443, in _get_statement
+    statement = await self._protocol.prepare(
+  File "asyncpg/protocol/protocol.pyx", line 165, in prepare
+asyncpg.exceptions.UndefinedColumnError: column "user_id" does not exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 563, in _prepare_and_execute
+    self._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 513, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.ProgrammingError: <class 'asyncpg.exceptions.UndefinedColumnError'>: column "user_id" does not exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/workspace/app/backend/core/database.py", line 553, in get_db
+    yield session
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/routing.py", line 120, in app
+    response = await f(request)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/routing.py", line 674, in app
+    raw_response = await run_endpoint_function(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/routing.py", line 328, in run_endpoint_function
+    return await dependant.call(**values)
+  File "/workspace/app/backend/routers/invite.py", line 180, in get_patient_reports
+    result = await db.execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/ext/asyncio/session.py", line 448, in execute
+    result = await greenlet_spawn(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2372, in execute
+    return self._execute_internal(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2279, in _execute_internal
+    result = conn.execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 563, in _prepare_and_execute
+    self._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 513, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.exc.ProgrammingError: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) <class 'asyncpg.exceptions.UndefinedColumnError'>: column "user_id" does not exist
+[SQL: 
+            SELECT id, teeth_scores, php_index, hygiene_level, plaque_percentage, risk_level, plaque_types, recommendations, created_at
+            FROM reports WHERE user_id = $1 ORDER BY created_at DESC
+        ]
+[parameters: ('00219baf-ffeb-479c-8664-430154bdb61a',)]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+2026-06-12 11:38:44,260 - main - ERROR - Exception: ProgrammingError: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) <class 'asyncpg.exceptions.UndefinedColumnError'>: column "user_id" does not exist
+[SQL: 
+            SELECT id, teeth_scores, php_index, hygiene_level, plaque_percentage, risk_level, plaque_types, recommendations, created_at
+            FROM reports WHERE user_id = $1 ORDER BY created_at DESC
+        ]
+[parameters: ('00219baf-ffeb-479c-8664-430154bdb61a',)]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+Traceback (most recent call last):
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 526, in _prepare_and_execute
+    prepared_stmt, attributes = await adapt_connection._prepare(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 773, in _prepare
+    prepared_stmt = await self._connection.prepare(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/asyncpg/connection.py", line 638, in prepare
+    return await self._prepare(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/asyncpg/connection.py", line 657, in _prepare
+    stmt = await self._get_statement(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/asyncpg/connection.py", line 443, in _get_statement
+    statement = await self._protocol.prepare(
+  File "asyncpg/protocol/protocol.pyx", line 165, in prepare
+asyncpg.exceptions.UndefinedColumnError: column "user_id" does not exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 563, in _prepare_and_execute
+    self._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 513, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.dialects.postgresql.asyncpg.AsyncAdapt_asyncpg_dbapi.ProgrammingError: <class 'asyncpg.exceptions.UndefinedColumnError'>: column "user_id" does not exist
+
+The above exception was the direct cause of the following exception:
+
+Traceback (most recent call last):
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/starlette/middleware/errors.py", line 164, in __call__
+    await self.app(scope, receive, _send)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/starlette/middleware/cors.py", line 88, in __call__
+    await self.app(scope, receive, send)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/starlette/middleware/exceptions.py", line 63, in __call__
+    await wrap_app_handling_exceptions(self.app, conn)(scope, receive, send)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/middleware/asyncexitstack.py", line 18, in __call__
+    await self.app(scope, receive, send)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/starlette/routing.py", line 660, in __call__
+    await self.middleware_stack(scope, receive, send)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/starlette/routing.py", line 680, in app
+    await route.handle(scope, receive, send)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/starlette/routing.py", line 276, in handle
+    await self.app(scope, receive, send)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/routing.py", line 134, in app
+    await wrap_app_handling_exceptions(app, request)(scope, receive, send)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/starlette/_exception_handler.py", line 53, in wrapped_app
+    raise exc
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/starlette/_exception_handler.py", line 42, in wrapped_app
+    await app(scope, receive, sender)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/routing.py", line 120, in app
+    response = await f(request)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/routing.py", line 674, in app
+    raw_response = await run_endpoint_function(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/fastapi/routing.py", line 328, in run_endpoint_function
+    return await dependant.call(**values)
+  File "/workspace/app/backend/routers/invite.py", line 180, in get_patient_reports
+    result = await db.execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/ext/asyncio/session.py", line 448, in execute
+    result = await greenlet_spawn(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 201, in greenlet_spawn
+    result = context.throw(*sys.exc_info())
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2372, in execute
+    return self._execute_internal(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/orm/session.py", line 2279, in _execute_internal
+    result = conn.execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1421, in execute
+    return meth(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/sql/elements.py", line 526, in _execute_on_connection
+    return connection._execute_clauseelement(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1643, in _execute_clauseelement
+    ret = self._execute_context(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1848, in _execute_context
+    return self._exec_single_context(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1988, in _exec_single_context
+    self._handle_dbapi_exception(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 2365, in _handle_dbapi_exception
+    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/base.py", line 1969, in _exec_single_context
+    self.dialect.do_execute(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/engine/default.py", line 952, in do_execute
+    cursor.execute(statement, parameters)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 585, in execute
+    self._adapt_connection.await_(
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 132, in await_only
+    return current.parent.switch(awaitable)  # type: ignore[no-any-return,attr-defined] # noqa: E501
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/util/_concurrency_py3k.py", line 196, in greenlet_spawn
+    value = await result
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 563, in _prepare_and_execute
+    self._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 513, in _handle_exception
+    self._adapt_connection._handle_exception(error)
+  File "/data/chats/696a657bc1bd4b8494abcc0ef5041a3d/.cache/python/lib/python3.10/site-packages/sqlalchemy/dialects/postgresql/asyncpg.py", line 797, in _handle_exception
+    raise translated_error from error
+sqlalchemy.exc.ProgrammingError: (sqlalchemy.dialects.postgresql.asyncpg.ProgrammingError) <class 'asyncpg.exceptions.UndefinedColumnError'>: column "user_id" does not exist
+[SQL: 
+            SELECT id, teeth_scores, php_index, hygiene_level, plaque_percentage, risk_level, plaque_types, recommendations, created_at
+            FROM reports WHERE user_id = $1 ORDER BY created_at DESC
+        ]
+[parameters: ('00219baf-ffeb-479c-8664-430154bdb61a',)]
+(Background on this error at: https://sqlalche.me/e/20/f405)
+
+2026-06-12 11:38:53,699 - services.database - DEBUG - [DB_OP] Starting database close
+2026-06-12 11:38:53,761 - core.database - INFO - Database connection closed and engine disposed
+2026-06-12 11:38:53,761 - services.database - INFO - Database connections closed
+2026-06-12 11:38:53,761 - services.database - DEBUG - [DB_OP] Database close completed in 0.0622s

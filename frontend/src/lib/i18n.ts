@@ -1,0 +1,140 @@
+export type Lang = "ru" | "en";
+
+export const translations = {
+  // Common
+  "back": { ru: "Назад", en: "Back" },
+  "to_main": { ru: "На главную", en: "Home" },
+  "logout": { ru: "Выйти", en: "Logout" },
+  "cancel": { ru: "Отмена", en: "Cancel" },
+  "error": { ru: "Ошибка", en: "Error" },
+  "success": { ru: "Успешно", en: "Success" },
+  "loading": { ru: "Загрузка...", en: "Loading..." },
+  "copied": { ru: "Скопировано", en: "Copied" },
+  "delete": { ru: "Удалить", en: "Delete" },
+
+  // Index page
+  "welcome_title": { ru: "Анализ гигиены полости рта", en: "Oral Hygiene Analysis" },
+  "welcome_subtitle": { ru: "Загрузите фото зубов, окрашенных индикатором налёта, и получите AI-оценку по методике PHP", en: "Upload a photo of teeth stained with plaque indicator and get an AI assessment using the PHP method" },
+  "upload_photo": { ru: "Загрузить фото", en: "Upload Photo" },
+  "take_photo": { ru: "Сделать фото", en: "Take Photo" },
+  "login": { ru: "Войти", en: "Log In" },
+  "analyzing": { ru: "Анализируем фото...", en: "Analyzing photo..." },
+  "analyzing_wait": { ru: "Это может занять несколько минут", en: "This may take a few minutes" },
+
+  // Results page
+  "results_title": { ru: "Результаты анализа", en: "Analysis Results" },
+  "php_index": { ru: "Индекс PHP", en: "PHP Index" },
+  "plaque": { ru: "налёта", en: "plaque" },
+  "high_risk": { ru: "Высокий риск", en: "High Risk" },
+  "medium_risk": { ru: "Средний риск", en: "Medium Risk" },
+  "low_risk": { ru: "Низкий риск", en: "Low Risk" },
+  "teeth_scores": { ru: "Оценка зубов", en: "Teeth Scores" },
+  "tooth": { ru: "Зуб", en: "Tooth" },
+  "plaque_types": { ru: "Типы налёта", en: "Plaque Types" },
+  "recommendations": { ru: "Рекомендации", en: "Recommendations" },
+  "extended_recommendations": { ru: "Расширенные рекомендации", en: "Extended Recommendations" },
+  "extended_recs_loading": { ru: "Генерация расширенных рекомендаций...", en: "Generating extended recommendations..." },
+  "orthodontic_detected": { ru: "Обнаружены ортодонтические конструкции", en: "Orthodontic appliances detected" },
+  "orthodontic_type": { ru: "Тип конструкции", en: "Appliance type" },
+  "download_report": { ru: "Скачать отчёт", en: "Download Report" },
+  "creating_file": { ru: "Создание файла...", en: "Creating file..." },
+  "new_analysis": { ru: "Новый анализ", en: "New Analysis" },
+  "no_data": { ru: "Нет данных для отображения", en: "No data to display" },
+  "return_home": { ru: "Вернуться на главную", en: "Return Home" },
+  "report_loading": { ru: "Загрузка отчёта...", en: "Loading report..." },
+  "report_not_found": { ru: "Отчёт не найден", en: "Report not found" },
+
+  // Hygiene levels
+  "hygiene_high": { ru: "гигиена высокая", en: "high hygiene" },
+  "hygiene_good": { ru: "гигиена хорошая", en: "good hygiene" },
+  "hygiene_satisfactory": { ru: "гигиена удовлетворительная", en: "satisfactory hygiene" },
+  "hygiene_unsatisfactory": { ru: "гигиена неудовлетворительная", en: "unsatisfactory hygiene" },
+
+  // Doctor dashboard
+  "doctor_label": { ru: "Врач", en: "Doctor" },
+  "my_patients": { ru: "Мои пациенты", en: "My Patients" },
+  "register_patient": { ru: "Зарегистрировать пациента", en: "Register Patient" },
+  "new_patient": { ru: "Новый пациент", en: "New Patient" },
+  "patient_name": { ru: "ФИО пациента", en: "Patient Full Name" },
+  "patient_name_placeholder": { ru: "Иванов Иван Иванович", en: "John Doe" },
+  "doctor_name": { ru: "ФИО врача", en: "Doctor Full Name" },
+  "doctor_name_placeholder": { ru: "Иванов Иван Иванович", en: "John Doe" },
+  "enter_doctor_name": { ru: "Введите ФИО врача", en: "Enter doctor name" },
+  "patient_surname": { ru: "Фамилия", en: "Surname" },
+  "patient_surname_placeholder": { ru: "Иванов", en: "Ivanov" },
+  "patient_firstname": { ru: "Имя (Отчество)", en: "First Name (Patronymic)" },
+  "patient_firstname_placeholder": { ru: "Иван Иванович", en: "Ivan" },
+  "gender": { ru: "Пол", en: "Gender" },
+  "male": { ru: "Мужской", en: "Male" },
+  "female": { ru: "Женский", en: "Female" },
+  "birth_date": { ru: "Дата рождения", en: "Date of Birth" },
+  "birth_date_required": { ru: "Укажите дату рождения пациента", en: "Patient date of birth is required" },
+  "login_password": { ru: "Логин и пароль", en: "Login & Password" },
+  "login_label": { ru: "Логин", en: "Login" },
+  "password_label": { ru: "Пароль", en: "Password" },
+  "generate_new": { ru: "Сгенерировать новые", en: "Generate New" },
+  "tell_patient_credentials": { ru: "Сообщите пациенту логин и пароль для входа в систему", en: "Share login and password with the patient" },
+  "register": { ru: "Зарегистрировать", en: "Register" },
+  "no_patients_yet": { ru: "Пока нет привязанных пациентов", en: "No patients yet" },
+  "register_patient_hint": { ru: "Зарегистрируйте пациента", en: "Register a patient" },
+  "back_to_patients": { ru: "Назад к списку пациентов", en: "Back to patients list" },
+  "add_photo": { ru: "Добавить фото", en: "Add Photo" },
+  "no_reports_yet": { ru: "У пациента пока нет отчётов", en: "No reports yet" },
+  "add_photo_first": { ru: "Добавьте фото для первого анализа", en: "Add a photo for the first analysis" },
+  "reports": { ru: "Отчёты", en: "Reports" },
+  "delete_patient": { ru: "Удалить пациента", en: "Delete Patient" },
+  "delete_confirm": { ru: "Вы уверены? Будут удалены все отчёты и данные пациента. Это действие нельзя отменить.", en: "Are you sure? All reports and patient data will be deleted. This action cannot be undone." },
+  "yes_delete": { ru: "Да, удалить", en: "Yes, delete" },
+  "patient_registered": { ru: "Пациент зарегистрирован", en: "Patient registered" },
+  "deleted": { ru: "Удалено", en: "Deleted" },
+  "patient_data_deleted": { ru: "Пациент и все данные удалены", en: "Patient and all data deleted" },
+  "login_copied": { ru: "Логин скопирован", en: "Login copied" },
+  "password_copied": { ru: "Пароль скопирован", en: "Password copied" },
+  "enter_patient_name": { ru: "Введите ФИО пациента", en: "Enter patient name" },
+  "login_not_created": { ru: "Логин не создан", en: "Login not created" },
+  "registration_error": { ru: "Ошибка регистрации пациента", en: "Patient registration error" },
+  "deletion_error": { ru: "Ошибка удаления", en: "Deletion error" },
+
+  // Patient dashboard
+  "patient_label": { ru: "Пациент", en: "Patient" },
+  "my_reports": { ru: "Мои отчёты", en: "My Reports" },
+  "no_reports_patient": { ru: "У вас пока нет отчётов", en: "You have no reports yet" },
+  "doctor_will_add": { ru: "Ваш врач добавит результаты после приёма", en: "Your doctor will add results after the appointment" },
+  "date_unknown": { ru: "Дата неизвестна", en: "Date unknown" },
+
+  // Role selection
+  "role_selection_title": { ru: "Вход в систему", en: "System Login" },
+  "i_am_doctor": { ru: "Я врач", en: "I am a doctor" },
+  "i_am_patient": { ru: "Я пациент", en: "I am a patient" },
+  "doctor_login_desc": { ru: "Вход для стоматологов", en: "Login for dentists" },
+  "patient_login_desc": { ru: "Вход для пациентов", en: "Login for patients" },
+  "patient_login_title": { ru: "Вход для пациента", en: "Patient Login" },
+  "enter_login": { ru: "Введите логин", en: "Enter login" },
+  "enter_password": { ru: "Введите пароль", en: "Enter password" },
+  "sign_in": { ru: "Войти", en: "Sign In" },
+  "signing_in": { ru: "Вход...", en: "Signing in..." },
+  "patients_registered_by_doctors": { ru: "Пациенты регистрируются врачом. Если у вас нет логина — обратитесь к вашему стоматологу.", en: "Patients are registered by doctors. If you don't have a login — contact your dentist." },
+  "set_password_title": { ru: "Установите пароль", en: "Set Password" },
+  "new_password": { ru: "Новый пароль", en: "New Password" },
+  "confirm_password": { ru: "Подтвердите пароль", en: "Confirm Password" },
+  "save_password": { ru: "Сохранить пароль", en: "Save Password" },
+  "saving": { ru: "Сохранение...", en: "Saving..." },
+  "passwords_dont_match": { ru: "Пароли не совпадают", en: "Passwords don't match" },
+  "min_4_chars": { ru: "Минимум 4 символа", en: "Minimum 4 characters" },
+
+  // Errors
+  "select_image": { ru: "Пожалуйста, выберите изображение", en: "Please select an image" },
+  "teeth_not_found": { ru: "Зубы не обнаружены", en: "Teeth not detected" },
+  "dye_not_detected": { ru: "Краситель не обнаружен", en: "Dye not detected" },
+  "analysis_error": { ru: "Ошибка анализа", en: "Analysis Error" },
+  "analysis_error_retry": { ru: "Ошибка анализа. Попробуйте ещё раз.", en: "Analysis error. Please try again." },
+
+  // Footer
+  "branding_footer": { ru: "zubchek.me • AI-анализ гигиены полости рта", en: "zubchek.me • AI oral hygiene analysis" },
+} as const;
+
+export type TranslationKey = keyof typeof translations;
+
+export function t(key: TranslationKey, lang: Lang): string {
+  return translations[key]?.[lang] || key;
+}

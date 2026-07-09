@@ -1,0 +1,20 @@
+2026-06-10 04:58:23,436 - main - INFO - === Logging system initialized ===
+2026-06-10 04:58:23,436 - main - INFO - Log file: logs/app_20260610_045823.log
+2026-06-10 04:58:23,437 - main - INFO - Log level: INFO
+2026-06-10 04:58:23,437 - main - INFO - Timestamp: 20260610_045823
+2026-06-10 04:58:24,184 - main - INFO - Included router: routers.aihub.router
+2026-06-10 04:58:24,205 - main - INFO - Included router: routers.analysis.router
+2026-06-10 04:58:24,219 - main - INFO - Included router: routers.auth.router
+2026-06-10 04:58:24,221 - main - INFO - Included router: routers.health.router
+2026-06-10 04:58:24,240 - main - INFO - Included router: routers.settings.router
+2026-06-10 04:58:24,274 - main - INFO - Included router: routers.storage.router
+2026-06-10 04:58:24,282 - main - INFO - Included router: routers.user.router
+2026-06-10 04:58:24,283 - main - INFO - === Application startup initiated ===
+2026-06-10 04:58:24,283 - services.database - INFO - Ignore creating tables
+2026-06-10 04:58:24,283 - services.mock_data - INFO - Ignore initialize data
+2026-06-10 04:58:24,283 - services.auth - INFO - Ignore initialize admin
+2026-06-10 04:58:24,284 - main - INFO - === Application startup completed successfully ===
+2026-06-10 04:59:05,707 - dependencies.auth - DEBUG - Authentication required for request GET /api/v1/auth/me
+2026-06-10 05:00:12,860 - services.database - DEBUG - [DB_OP] Starting database close
+2026-06-10 05:00:12,861 - services.database - INFO - Database connections closed
+2026-06-10 05:00:12,861 - services.database - DEBUG - [DB_OP] Database close completed in 0.0003s

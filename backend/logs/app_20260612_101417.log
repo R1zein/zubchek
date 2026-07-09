@@ -1,0 +1,50 @@
+2026-06-12 10:14:17,515 - main - INFO - === Logging system initialized ===
+2026-06-12 10:14:17,515 - main - INFO - Log file: logs/app_20260612_101417.log
+2026-06-12 10:14:17,515 - main - INFO - Log level: INFO
+2026-06-12 10:14:17,515 - main - INFO - Timestamp: 20260612_101417
+2026-06-12 10:14:18,320 - main - INFO - Included router: routers.aihub.router
+2026-06-12 10:14:18,335 - main - INFO - Included router: routers.analysis.router
+2026-06-12 10:14:18,345 - main - INFO - Included router: routers.auth.router
+2026-06-12 10:14:18,388 - main - INFO - Included router: routers.doctor_patients.router
+2026-06-12 10:14:18,390 - main - INFO - Included router: routers.health.router
+2026-06-12 10:14:18,406 - main - INFO - Included router: routers.invite.router
+2026-06-12 10:14:18,420 - main - INFO - Included router: routers.reports.router
+2026-06-12 10:14:18,438 - main - INFO - Included router: routers.settings.router
+2026-06-12 10:14:18,471 - main - INFO - Included router: routers.storage.router
+2026-06-12 10:14:18,478 - main - INFO - Included router: routers.user.router
+2026-06-12 10:14:18,525 - main - INFO - Included router: routers.users_profiles.router
+2026-06-12 10:14:18,526 - main - INFO - === Application startup initiated ===
+2026-06-12 10:14:18,526 - services.database - INFO - Ignore creating tables
+2026-06-12 10:14:18,526 - services.mock_data - INFO - Ignore initialize data
+2026-06-12 10:14:18,526 - services.auth - INFO - Ignore initialize admin
+2026-06-12 10:14:18,527 - main - INFO - === Application startup completed successfully ===
+2026-06-12 10:14:23,037 - dependencies.auth - DEBUG - Authentication required for request GET /api/v1/auth/me
+2026-06-12 10:14:23,198 - core.config - DEBUG - Read dynamic attribute jwt_secret_key from environment variable JWT_SECRET_KEY
+2026-06-12 10:14:23,198 - core.config - DEBUG - Read dynamic attribute jwt_algorithm from environment variable JWT_ALGORITHM
+2026-06-12 10:14:23,210 - core.auth - DEBUG - Authentication token validated for user hash: f7d7f295
+2026-06-12 10:14:23,510 - core.auth - DEBUG - Authentication token validated for user hash: f7d7f295
+2026-06-12 10:14:23,510 - core.database - DEBUG - [DB_OP] Starting get_db session creation
+2026-06-12 10:14:23,510 - core.database - WARNING - Database session maker not available, attempting lazy initialization...
+2026-06-12 10:14:23,510 - core.database - WARNING - Database not initialized, attempting lazy initialization...
+2026-06-12 10:14:23,510 - core.database - INFO - Starting database initialization...
+2026-06-12 10:14:23,511 - core.config - DEBUG - Read dynamic attribute database_url from environment variable DATABASE_URL
+2026-06-12 10:14:23,511 - core.database - INFO - Normalizing database URL for async compatibility...
+2026-06-12 10:14:23,511 - core.database - INFO - Creating async database engine...
+2026-06-12 10:14:23,512 - core.database - INFO - Using QueuePool with connection pooling for non-Lambda environment
+2026-06-12 10:14:23,551 - core.database - INFO - Database engine created successfully
+2026-06-12 10:14:23,551 - core.database - INFO - Creating async session maker...
+2026-06-12 10:14:23,551 - core.database - INFO - Async session maker created successfully
+2026-06-12 10:14:23,551 - core.database - INFO - Database connection initialized successfully
+2026-06-12 10:14:23,551 - core.database - DEBUG - [DB_OP] Starting create_tables
+2026-06-12 10:14:23,551 - core.database - INFO - 🔧 Starting table creation...
+2026-06-12 10:14:24,908 - core.database - INFO - Tables initialized successfully
+2026-06-12 10:14:24,908 - core.database - DEBUG - [DB_OP] Create tables completed in 1.3568s
+2026-06-12 10:14:24,967 - core.database - INFO - Lazy database initialization completed successfully
+2026-06-12 10:14:24,968 - core.database - DEBUG - [DB_OP] Database session created successfully in 1.4576s
+2026-06-12 10:14:24,968 - routers.users_profiles - DEBUG - Querying users_profiless: query={}, sort=None, skip=0, limit=20, fields=None
+2026-06-12 10:14:25,513 - routers.users_profiles - DEBUG - Found 0 users_profiless
+2026-06-12 10:14:25,513 - core.database - DEBUG - [DB_OP] Database session cleanup after 2.0032s
+2026-06-12 10:15:28,015 - services.database - DEBUG - [DB_OP] Starting database close
+2026-06-12 10:15:28,078 - core.database - INFO - Database connection closed and engine disposed
+2026-06-12 10:15:28,079 - services.database - INFO - Database connections closed
+2026-06-12 10:15:28,079 - services.database - DEBUG - [DB_OP] Database close completed in 0.0638s

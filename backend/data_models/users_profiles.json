@@ -1,0 +1,44 @@
+{
+    "title": "users_profiles",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "user_id": {
+            "type": "string",
+            "description": "User ID"
+        },
+        "role": {
+            "type": "string",
+            "description": "User role"
+        },
+        "full_name": {
+            "type": "string",
+            "description": "Full name"
+        },
+        "clinic_name": {
+            "type": "string",
+            "description": "Clinic name / login"
+        },
+        "phone": {
+            "type": "string",
+            "description": "Phone / password"
+        },
+        "birth_date": {
+            "type": "string",
+            "format": "date",
+            "description": "Date of birth"
+        },
+        "gender": {
+            "type": "string",
+            "description": "Gender: male/female/unknown"
+        }
+    },
+    "required": [
+        "id",
+        "user_id",
+        "role"
+    ]
+}

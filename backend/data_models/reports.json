@@ -1,0 +1,45 @@
+{
+    "title": "reports",
+    "type": "object",
+    "properties": {
+        "id": {
+            "type": "integer",
+            "description": "Primary key, auto-increment"
+        },
+        "teeth_scores": {
+            "type": "string",
+            "description": "JSON string of teeth scores"
+        },
+        "php_index": {
+            "type": "number",
+            "description": "PHP index value"
+        },
+        "hygiene_level": {
+            "type": "string",
+            "description": "Hygiene level assessment"
+        },
+        "plaque_percentage": {
+            "type": "integer",
+            "description": "Plaque percentage 0-100"
+        },
+        "risk_level": {
+            "type": "string",
+            "description": "Risk level: low, medium, high"
+        },
+        "plaque_types": {
+            "type": "string",
+            "description": "JSON string of plaque types array"
+        },
+        "recommendations": {
+            "type": "string",
+            "description": "JSON string of recommendations array"
+        },
+        "image_data": {
+            "type": "string",
+            "description": "Base64 image data URI of the uploaded photo"
+        }
+    },
+    "required": [
+        "id"
+    ]
+}

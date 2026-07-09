@@ -1,0 +1,109 @@
+2026-06-15 03:11:56,226 - main - INFO - === Logging system initialized ===
+2026-06-15 03:11:56,226 - main - INFO - Log file: logs/app_20260615_031156.log
+2026-06-15 03:11:56,226 - main - INFO - Log level: INFO
+2026-06-15 03:11:56,226 - main - INFO - Timestamp: 20260615_031156
+2026-06-15 03:11:56,983 - main - INFO - Included router: routers.aihub.router
+2026-06-15 03:11:57,001 - main - INFO - Included router: routers.analysis.router
+2026-06-15 03:11:57,061 - main - INFO - Included router: routers.auth.router
+2026-06-15 03:11:57,078 - main - INFO - Included router: routers.custom_auth.router
+2026-06-15 03:11:57,124 - main - INFO - Included router: routers.doctor_patients.router
+2026-06-15 03:11:57,126 - main - INFO - Included router: routers.health.router
+2026-06-15 03:11:57,180 - main - INFO - Included router: routers.invite.router
+2026-06-15 03:11:57,191 - main - INFO - Included router: routers.reports.router
+2026-06-15 03:11:57,210 - main - INFO - Included router: routers.settings.router
+2026-06-15 03:11:57,243 - main - INFO - Included router: routers.storage.router
+2026-06-15 03:11:57,253 - main - INFO - Included router: routers.user.router
+2026-06-15 03:11:57,297 - main - INFO - Included router: routers.users_profiles.router
+2026-06-15 03:11:58,667 - watchfiles.main - DEBUG - 1 change detected: {(<Change.added: 1>, '/workspace/app/backend/logs/app_20260615_031158.log')}
+2026-06-15 03:11:59,018 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:11:59,420 - watchfiles.main - DEBUG - 2 changes detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log'), (<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031158.log')}
+2026-06-15 03:11:59,771 - watchfiles.main - DEBUG - 2 changes detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log'), (<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031158.log')}
+2026-06-15 03:12:00,122 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:00,473 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:00,824 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:01,175 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:01,526 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:01,877 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:02,228 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:02,579 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:02,929 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:03,280 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:03,631 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:03,982 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:04,333 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:04,684 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:05,035 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:05,386 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:05,738 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:06,089 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:06,450 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:06,801 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:07,152 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:07,503 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:07,854 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:08,204 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:08,555 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:08,906 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:09,258 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:09,609 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:09,959 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:10,310 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:10,661 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:11,012 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:11,363 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:11,714 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:12,065 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:12,416 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:12,767 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:13,118 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:13,469 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:13,820 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:14,170 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:14,521 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:14,872 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:15,223 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:15,574 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:15,925 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:16,276 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:16,627 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:16,978 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:17,328 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:17,679 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:18,030 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:18,381 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:18,732 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:19,083 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:19,434 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:19,784 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:20,135 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:20,486 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:20,838 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:21,188 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:21,539 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:21,890 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:22,241 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:22,592 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:22,943 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:23,294 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:23,644 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:23,995 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:24,346 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:24,697 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:25,048 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:25,399 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:25,750 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:26,101 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:26,452 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:26,803 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:27,154 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:27,505 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:27,856 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:28,206 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:28,557 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:28,908 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:29,259 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:29,610 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:29,961 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:30,312 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:30,663 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
+2026-06-15 03:12:31,014 - watchfiles.main - DEBUG - 1 change detected: {(<Change.modified: 2>, '/workspace/app/backend/logs/app_20260615_031156.log')}
