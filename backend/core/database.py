@@ -33,16 +33,30 @@ class DatabaseManager:
 
     @staticmethod
     def _sanitize_query_params(url):
-        """Remove query parameters that are incompatible with asyncpg.
+        """Adjust query parameters for asyncpg compatibility.
 
-        Some providers (e.g. Neon) may inject parameters like ``channel_binding``
-        that are not supported by asyncpg and cause connection failures.
+        Some providers (e.g. Neon) append parameters that asyncpg does not
+        accept:
+        - ``channel_binding`` is unsupported and is dropped.
+        - ``sslmode`` is a libpq/psycopg option; asyncpg uses ``ssl`` instead,
+          so we translate it (``sslmode=require`` -> ``ssl=require``). Without
+          this, connecting to SSL-only providers like Neon fails at startup.
         """
-        unsupported_params = {"channel_binding"}
-        found = unsupported_params & set(url.query)
-        if found:
-            logger.warning(f"Removed unsupported database URL query params: {sorted(found)}")
-            return url.set(query={k: v for k, v in url.query.items() if k not in unsupported_params})
+        query = dict(url.query)
+        changed = False
+
+        for param in {"channel_binding"} & set(query):
+            query.pop(param, None)
+            changed = True
+            logger.warning(f"Removed unsupported database URL query param: {param}")
+
+        if "sslmode" in query and "ssl" not in query:
+            query["ssl"] = query.pop("sslmode")
+            changed = True
+            logger.warning("Translated 'sslmode' query param to asyncpg-compatible 'ssl'")
+
+        if changed:
+            return url.set(query=query)
         return url
 
     def _normalize_async_database_url(self, raw_url: str) -> str:
