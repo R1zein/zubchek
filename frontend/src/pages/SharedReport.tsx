@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { createClient } from "@metagptx/web-sdk";
+import { createClient } from "../lib/mgxClient";
 import { Loader2, AlertTriangle, Download, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import html2canvas from "html2canvas";

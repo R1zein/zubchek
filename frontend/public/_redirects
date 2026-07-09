@@ -1,0 +1,5 @@
+# Cloudflare Pages / Netlify SPA fallback.
+# Real files (assets, prerendered blog pages, robots.txt, sitemap) are served
+# first; any other path falls back to the SPA so client-side routes like
+# /report/:id and /doctor work on direct load and refresh.
+/*    /index.html   200

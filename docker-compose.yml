@@ -1,0 +1,42 @@
+# Local / self-hosted stack: Postgres + FastAPI backend.
+# The frontend is built and deployed separately (see MIGRATION.md).
+#
+#   docker compose up --build
+#
+# Backend:  http://localhost:8000  (Swagger at /docs)
+# Postgres: localhost:5432
+
+services:
+  db:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: zubchek
+      POSTGRES_PASSWORD: zubchek
+      POSTGRES_DB: zubchek
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U zubchek"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build: ./backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      # Override for the in-compose database (wins over .env)
+      DATABASE_URL: postgresql+asyncpg://zubchek:zubchek@db:5432/zubchek
+      PORT: "8000"
+    ports:
+      - "8000:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+
+volumes:
+  pgdata:

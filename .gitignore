@@ -1,0 +1,35 @@
+# --- Secrets / env ---
+.env
+.env.*
+!.env.example
+frontend/.env
+frontend/.env.*
+!frontend/.env.example
+
+# --- Python ---
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+
+# --- Databases (local) ---
+*.db
+*.sqlite
+*.sqlite3
+
+# --- Logs ---
+backend/logs/
+*.log
+
+# --- Node / frontend build ---
+node_modules/
+frontend/node_modules/
+frontend/dist/
+
+# --- OS / editor ---
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

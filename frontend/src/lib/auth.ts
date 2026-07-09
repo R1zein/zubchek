@@ -1,4 +1,4 @@
-import { createClient } from "@metagptx/web-sdk";
+import { createClient } from "./mgxClient";
 
 const client = createClient();
 
