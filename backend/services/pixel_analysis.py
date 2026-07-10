@@ -138,7 +138,9 @@ def analyze_teeth_pixels(image_data_uri: str, debug: bool = True) -> dict:
         "blue": pct(counts["blue"]),
         "light_blue": pct(counts["light_blue"]),
     }
-    pollution = color_pct["purple"] + color_pct["blue"] + color_pct["light_blue"]
+    # Raw stained area (any dye colour). NOT the Z-Index — the index weights
+    # colours by plaque age (see compute_z_index). Kept only as a coverage stat.
+    stained_area = color_pct["purple"] + color_pct["blue"] + color_pct["light_blue"]
 
     result = {
         "method": "pixel_hsv_v1",
@@ -147,8 +149,7 @@ def analyze_teeth_pixels(image_data_uri: str, debug: bool = True) -> dict:
         "tooth_coverage_percent": round(100 * tooth / total) if total else 0,
         "counts": counts,
         "overall_color_percentages": color_pct,
-        "pollution_percentage": pollution,
-        "cleanliness_percentage": color_pct["white"],
+        "stained_area_percent": stained_area,
     }
     if debug:
         result["debug_image"] = _overlay_b64(labels)

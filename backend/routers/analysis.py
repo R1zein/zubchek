@@ -146,8 +146,12 @@ async def analyze_pixels(data: AnalyzeRequest, debug: bool = Query(True)):
     if not data.image:
         raise HTTPException(status_code=400, detail="Фото не предоставлено")
     from services.pixel_analysis import analyze_teeth_pixels
+    from services.teeth_analysis import compute_z_index
     try:
-        return analyze_teeth_pixels(data.image, debug=debug)
+        res = analyze_teeth_pixels(data.image, debug=debug)
+        # Apply the same severity-weighted Z-Index scoring as the LLM path.
+        res["z_index"] = compute_z_index(res["overall_color_percentages"])
+        return res
     except Exception as e:
         logger.error(f"Pixel analysis error: {e}")
         raise HTTPException(status_code=500, detail="Ошибка пиксельного анализа")
