@@ -50,7 +50,7 @@ class GenTxtRequest(BaseModel):
     messages: List[ChatMessage] = Field(..., description="Conversation messages list.")
     model: str = Field(default="deepseek-v4-pro", description="Model name")
     stream: bool = Field(default=False, description="Whether to enable streaming output.")
-    temperature: Optional[float] = Field(default=0.7, description="Sampling temperature (0-2).")
+    temperature: Optional[float] = Field(default=None, description="Sampling temperature. Omitted when None (Claude Opus 4.8 / Sonnet 5 reject it).")
     max_tokens: Optional[int] = Field(default=4096, description="Maximum number of generated tokens.")
 
 

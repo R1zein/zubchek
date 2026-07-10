@@ -125,13 +125,18 @@ class AIHubService:
             client = self._require_ai_client()
             messages = [self._convert_message(msg) for msg in request.messages]
 
-            response = await client.chat.completions.create(
-                model=request.model,
-                messages=messages,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-                stream=False,
-            )
+            params = {
+                "model": request.model,
+                "messages": messages,
+                "max_tokens": request.max_tokens,
+                "stream": False,
+            }
+            # Newer Claude models (Opus 4.8 / Sonnet 5, via the OpenAI-compatible
+            # endpoint) reject `temperature` with a 400. Only send it when set.
+            if request.temperature is not None:
+                params["temperature"] = request.temperature
+
+            response = await client.chat.completions.create(**params)
 
             content = response.choices[0].message.content or ""
             usage = None
@@ -166,13 +171,16 @@ class AIHubService:
             client = self._require_ai_client()
             messages = [self._convert_message(msg) for msg in request.messages]
 
-            stream = await client.chat.completions.create(
-                model=request.model,
-                messages=messages,
-                temperature=request.temperature,
-                max_tokens=request.max_tokens,
-                stream=True,
-            )
+            params = {
+                "model": request.model,
+                "messages": messages,
+                "max_tokens": request.max_tokens,
+                "stream": True,
+            }
+            if request.temperature is not None:
+                params["temperature"] = request.temperature
+
+            stream = await client.chat.completions.create(**params)
 
             async for chunk in stream:
                 if chunk.choices and chunk.choices[0].delta.content:
