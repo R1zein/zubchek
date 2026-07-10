@@ -1,9 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { createClient } from "../lib/mgxClient";
-import { Loader2, AlertTriangle, Download, ChevronDown, ChevronUp, Sparkles } from "lucide-react";
+import { Loader2, AlertTriangle, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import html2canvas from "html2canvas";
 import AppHeader from "@/components/AppHeader";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -63,90 +62,6 @@ interface ReportData {
   analysis_data?: AnalysisData;
 }
 
-function ExtendedRecommendations({ reportId, lang, t }: { reportId: number; lang: string; t: (key: string) => string }) {
-  const [expanded, setExpanded] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [extRecs, setExtRecs] = useState<string[] | null>(null);
-  const [orthodonticDetected, setOrthodonticDetected] = useState(false);
-  const [orthodonticType, setOrthodonticType] = useState<string | null>(null);
-
-  const fetchExtendedRecs = async () => {
-    if (extRecs) {
-      setExpanded(!expanded);
-      return;
-    }
-    setLoading(true);
-    setExpanded(true);
-    try {
-      const response = await client.apiCall.invoke({
-        url: "/api/v1/analysis/extended-recommendations",
-        method: "POST",
-        data: { report_id: reportId, lang },
-      });
-      const data = response?.data ?? response;
-      setExtRecs(data.recommendations || []);
-      setOrthodonticDetected(data.orthodontic_detected || false);
-      setOrthodonticType(data.orthodontic_type || null);
-    } catch (err) {
-      console.error("Extended recs error:", err);
-      setExtRecs([
-        lang === "ru" ? "Не удалось загрузить расширенные рекомендации. Попробуйте позже." : "Failed to load extended recommendations. Try again later.",
-      ]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  return (
-    <div className="mb-4 sm:mb-6">
-      <Button
-        onClick={fetchExtendedRecs}
-        disabled={loading}
-        variant="outline"
-        className="w-full py-3 text-sm sm:text-base rounded-xl border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/30"
-      >
-        {loading ? (
-          <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-            {t("extended_recs_loading")}
-          </>
-        ) : (
-          <>
-            <Sparkles className="mr-2 h-4 w-4" />
-            {t("extended_recommendations")}
-            {expanded ? <ChevronUp className="ml-2 h-4 w-4" /> : <ChevronDown className="ml-2 h-4 w-4" />}
-          </>
-        )}
-      </Button>
-
-      {expanded && extRecs && (
-        <div className="mt-3 space-y-2 animate-in slide-in-from-top-2">
-          {orthodonticDetected && (
-            <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800">
-              <p className="text-sm font-semibold text-blue-800 dark:text-blue-300">
-                🦷 {t("orthodontic_detected")}
-              </p>
-              {orthodonticType && (
-                <p className="text-xs text-blue-600 dark:text-blue-400 mt-1">
-                  {t("orthodontic_type")}: {orthodonticType}
-                </p>
-              )}
-            </div>
-          )}
-          {extRecs.map((rec, idx) => (
-            <div key={idx} className="p-2.5 sm:p-3 rounded-lg bg-gradient-to-r from-purple-50 to-indigo-50 dark:from-purple-900/30 dark:to-indigo-900/30 border border-purple-100 dark:border-purple-800">
-              <p className="text-xs sm:text-sm text-purple-800 dark:text-purple-300">
-                <span className="font-semibold mr-1">{idx + 1}.</span>
-                {rec}
-              </p>
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export default function SharedReport() {
   const { reportId } = useParams<{ reportId: string }>();
   const navigate = useNavigate();
@@ -154,7 +69,6 @@ export default function SharedReport() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [downloading, setDownloading] = useState(false);
   const reportRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -188,25 +102,18 @@ export default function SharedReport() {
     }
   }, [reportId]);
 
-  const handleDownload = async () => {
-    if (!reportRef.current) return;
-    setDownloading(true);
-    try {
-      const canvas = await html2canvas(reportRef.current, {
-        backgroundColor: "#ffffff",
-        scale: 2,
-        useCORS: true,
-        logging: false,
-      });
-      const link = document.createElement("a");
-      link.download = `zubchek-report-${report?.created_at?.slice(0, 10) || new Date().toISOString().slice(0, 10)}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    } catch (err) {
-      console.error("Download error:", err);
-    } finally {
-      setDownloading(false);
-    }
+  // Print the report to a real, paginated PDF (see Results.tsx for rationale).
+  const handlePrint = () => {
+    const html = document.documentElement;
+    const wasDark = html.classList.contains("dark");
+    const restore = () => {
+      if (wasDark) html.classList.add("dark");
+      window.removeEventListener("afterprint", restore);
+    };
+    if (wasDark) html.classList.remove("dark");
+    window.addEventListener("afterprint", restore);
+    window.print();
+    setTimeout(restore, 1500);
   };
 
   if (loading) {
@@ -285,11 +192,13 @@ export default function SharedReport() {
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col">
       {/* Header */}
-      <AppHeader showBack />
+      <div className="no-print">
+        <AppHeader showBack />
+      </div>
 
       {/* Content */}
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-lg lg:max-w-4xl mx-auto w-full">
-        <div ref={reportRef} className="bg-white dark:bg-gray-900 p-4 sm:p-6">
+        <div ref={reportRef} id="report-printable" className="bg-white dark:bg-gray-900 p-4 sm:p-6">
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-6">
             {createdDate}
           </h2>
@@ -419,24 +328,18 @@ export default function SharedReport() {
             </div>
           )}
 
-          {/* Extended Recommendations */}
-          {report && report.id && (
-            <ExtendedRecommendations reportId={report.id} lang={lang} t={t} />
-          )}
-
           <div className="pt-3 mt-3 border-t border-gray-100 dark:border-gray-800 text-center">
             <span className="text-xs text-gray-400">{t("branding_footer")}</span>
           </div>
         </div>
 
-        <div className="flex flex-col gap-3 mt-4 sm:mt-6">
+        <div className="no-print flex flex-col gap-3 mt-4 sm:mt-6">
           <Button
-            onClick={handleDownload}
-            disabled={downloading}
+            onClick={handlePrint}
             className="w-full bg-purple-600 hover:bg-purple-700 text-white py-5 sm:py-6 text-base sm:text-lg rounded-xl"
           >
             <Download className="mr-2 h-5 w-5" />
-            {downloading ? t("creating_file") : t("download_report")}
+            {t("download_report")}
           </Button>
           <Button
             onClick={() => navigate("/")}

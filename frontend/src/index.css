@@ -99,3 +99,40 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* Print: emit only the report (#report-printable) as a clean, paginated PDF.
+   handlePrint() removes the `dark` class first, so print is always light. */
+@media print {
+  .no-print {
+    display: none !important;
+  }
+
+  body * {
+    visibility: hidden;
+  }
+
+  #report-printable,
+  #report-printable * {
+    visibility: visible;
+  }
+
+  #report-printable {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+  }
+
+  /* Keep cards, tooth cells and recommendation items from splitting across pages. */
+  #report-printable .grid > div,
+  #report-printable .space-y-2 > div,
+  #report-printable .space-y-4 > div {
+    break-inside: avoid;
+  }
+
+  @page {
+    margin: 14mm;
+  }
+}
