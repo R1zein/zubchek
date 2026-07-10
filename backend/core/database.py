@@ -1,6 +1,8 @@
 import asyncio
+import importlib
 import logging
 import os
+import pkgutil
 import re
 import time
 from pathlib import Path
@@ -21,6 +23,26 @@ logger = logging.getLogger(__name__)
 
 class Base(DeclarativeBase):
     pass
+
+
+def _import_all_models() -> None:
+    """Import every module in the `models` package so all ORM models register
+    on ``Base.metadata`` before ``create_all`` runs.
+
+    Some tables (e.g. ``reports``) are only ever touched via raw SQL, so their
+    model module is never imported by a router. Without this, ``create_all``
+    silently skips them and the table is never created on a fresh database.
+    """
+    try:
+        import models as _models_pkg
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Could not import models package: %s", exc)
+        return
+    for _finder, name, _is_pkg in pkgutil.iter_modules(_models_pkg.__path__, _models_pkg.__name__ + "."):
+        try:
+            importlib.import_module(name)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Failed to import model module %s: %s", name, exc)
 
 
 class DatabaseManager:
@@ -207,6 +229,10 @@ class DatabaseManager:
             if not self.engine:
                 logger.error("Database engine not initialized")
                 raise RuntimeError("Database engine not initialized")
+
+            # Register every ORM model (incl. raw-SQL-only ones like `reports`)
+            # so create_all below actually creates their tables on a fresh DB.
+            _import_all_models()
 
             logger.info("🔧 Starting table structure repair...")
             await self.check_and_repair_existing_tables()
