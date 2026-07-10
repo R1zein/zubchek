@@ -302,7 +302,7 @@ Respond ONLY with valid JSON:
             messages=messages,
         )
 
-        response = await ai_service.gen_txt(request)
+        response = await ai_service.gentxt(request)
         response_text = response.content if hasattr(response, "content") else str(response)
 
         # Parse JSON from response
