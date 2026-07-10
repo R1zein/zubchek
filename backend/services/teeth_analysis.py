@@ -270,6 +270,54 @@ def compute_z_index(color_percentages: dict) -> dict:
     }
 
 
+def _static_recommendations(risk_level: str) -> list:
+    """Fallback recommendations when the AI text service is unavailable."""
+    base = [
+        "Чистите зубы дважды в день фторсодержащей пастой не менее 2 минут.",
+        "Ежедневно используйте зубную нить или ирригатор для межзубных промежутков.",
+    ]
+    if risk_level == "high":
+        base.append("Обратитесь к стоматологу-гигиенисту для профессиональной чистки.")
+        base.append("Особое внимание уделите придесневой зоне и внутренним поверхностям зубов.")
+    elif risk_level == "medium":
+        base.append("Уделите больше внимания технике чистки в зонах скопления налёта.")
+    else:
+        base.append("Отличный уровень гигиены — продолжайте в том же духе.")
+    return base
+
+
+async def generate_recommendations(pollution_pct: int, risk_level: str, color_pct: dict) -> list:
+    """Generate short Russian hygiene recommendations from the numeric result.
+
+    Text-only LLM call (no image) — the numbers come from the pixel analyzer.
+    Falls back to static advice if the AI service is unavailable.
+    """
+    prompt = (
+        "Пациенту провели анализ гигиены полости рта по индексу зубного налёта.\n"
+        f"Загрязнённость: {pollution_pct}%. Уровень риска: {risk_level}.\n"
+        f"Состав налёта: свежий (лёгкий) {color_pct.get('purple', 0)}%, "
+        f"средний {color_pct.get('blue', 0)}%, старый (тяжёлый) {color_pct.get('light_blue', 0)}%, "
+        f"чистая эмаль {color_pct.get('white', 0)}%.\n"
+        "Дай 3-4 короткие практические рекомендации по гигиене на русском языке, "
+        "с учётом состава налёта. Ответь ТОЛЬКО JSON-массивом строк, без пояснений. "
+        'Пример: ["рекомендация 1", "рекомендация 2"]'
+    )
+    try:
+        service = AIHubService()
+        request = GenTxtRequest(
+            messages=[ChatMessage(role="user", content=prompt)],
+            model=get_ai_model(),
+            max_tokens=800,
+        )
+        response = await service.gentxt(request)
+        arr = json.loads(extract_json_block(response.content.strip()))
+        if isinstance(arr, list) and arr:
+            return [str(x) for x in arr][:4]
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(f"AI recommendations failed, using fallback: {e}")
+    return _static_recommendations(risk_level)
+
+
 async def analyze_teeth_photo(image_data_uri: str) -> dict:
     """Analyze a teeth photo using AI multimodal capabilities with Z-Index."""
     service = AIHubService()

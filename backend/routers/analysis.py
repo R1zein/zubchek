@@ -65,27 +65,66 @@ async def analyze_photo(
     db: AsyncSession = Depends(get_db),
     current_user: Optional[UserResponse] = Depends(get_optional_user),
 ):
-    """Analyze a teeth photo using the Z-Index methodology."""
+    """Analyze a teeth photo — deterministic pixel-level Z-Index.
+
+    Color percentages and the index are computed from pixels (accurate); the
+    LLM is used only to phrase the text recommendations (with a static
+    fallback). Photo validation is done with lenient pixel heuristics.
+    """
+    from services.pixel_analysis import analyze_teeth_pixels
+    from services.teeth_analysis import compute_z_index, generate_recommendations
+
     try:
         if not data.image:
             raise HTTPException(status_code=400, detail="Фото не предоставлено")
 
-        result = await analyze_teeth_photo(data.image)
+        # 1. Deterministic pixel color analysis
+        try:
+            px = analyze_teeth_pixels(data.image, debug=False)
+        except Exception as e:
+            logger.error(f"Pixel analysis error: {e}")
+            raise HTTPException(status_code=500, detail="Ошибка анализа. Попробуйте ещё раз.")
 
-        if "error" in result:
+        # 2. Lenient validation (no LLM)
+        if px.get("tooth_coverage_percent", 0) < 6:
             return AnalyzeResponse(
-                has_teeth=False,
-                error=result["error"],
-                message=result["message"],
+                has_teeth=False, error="no_teeth",
+                message="На фото не обнаружены зубы. Пожалуйста, сделайте другое фото.",
+            )
+        if px.get("stained_area_percent", 0) < 4:
+            return AnalyzeResponse(
+                has_teeth=False, error="no_dye_detected",
+                message="Краситель не обнаружен. Пожалуйста, нанесите специальный краситель-индикатор налёта на зубы и сделайте новое фото.",
             )
 
-        # Save report to database
+        # 3. Severity-weighted Z-Index from pixel percentages
+        z = compute_z_index(px["overall_color_percentages"])
+
+        # 4. Text recommendations (LLM text-only; static fallback on failure)
+        recommendations = await generate_recommendations(
+            z["pollution_percentage"], z["risk_level"], z["color_percentages"]
+        )
+
+        result = {
+            "color_percentages": z["color_percentages"],
+            "points_breakdown": z["points_breakdown"],
+            "total_points": z["total_points"],
+            "max_points": z["max_points"],
+            "pollution_percentage": z["pollution_percentage"],
+            "cleanliness_percentage": z["cleanliness_percentage"],
+            "risk_level": z["risk_level"],
+            "hygiene_level": z["hygiene_level"],
+            "recommendations": recommendations,
+            "tooth_coverage_percent": px.get("tooth_coverage_percent"),
+            "stained_area_percent": px.get("stained_area_percent"),
+            "method": px.get("method"),
+        }
+
+        # 5. Save report
         report_id = None
         user_id = str(current_user.id) if current_user else None
-        pollution_pct = result.get("pollution_percentage", 0)
+        pollution_pct = result["pollution_percentage"]
         try:
-            analysis_data_json = json.dumps(result, ensure_ascii=False)
-
             db_result = await db.execute(
                 text("""
                     INSERT INTO reports (user_id, php_index, hygiene_level, plaque_percentage, risk_level, recommendations, image_data, analysis_type, analysis_data)
@@ -95,13 +134,13 @@ async def analyze_photo(
                 {
                     "user_id": user_id,
                     "php_index": pollution_pct / 100.0,
-                    "hygiene_level": result.get("hygiene_level"),
+                    "hygiene_level": result["hygiene_level"],
                     "plaque_percentage": pollution_pct,
-                    "risk_level": result.get("risk_level"),
-                    "recommendations": json.dumps(result.get("recommendations", []), ensure_ascii=False),
+                    "risk_level": result["risk_level"],
+                    "recommendations": json.dumps(recommendations, ensure_ascii=False),
                     "image_data": data.image,
-                    "analysis_type": "z_index",
-                    "analysis_data": analysis_data_json,
+                    "analysis_type": "z_index_pixel",
+                    "analysis_data": json.dumps(result, ensure_ascii=False),
                 },
             )
             await db.commit()
@@ -112,24 +151,23 @@ async def analyze_photo(
 
         return AnalyzeResponse(
             has_teeth=True,
-            color_percentages=result.get("color_percentages"),
-            points_breakdown=result.get("points_breakdown"),
-            total_points=result.get("total_points"),
-            max_points=result.get("max_points"),
-            pollution_percentage=result.get("pollution_percentage"),
-            cleanliness_percentage=result.get("cleanliness_percentage"),
-            risk_level=result.get("risk_level"),
-            hygiene_level=result.get("hygiene_level"),
-            teeth=result.get("teeth"),
-            recommendations=result.get("recommendations", []),
+            color_percentages=result["color_percentages"],
+            points_breakdown=result["points_breakdown"],
+            total_points=result["total_points"],
+            max_points=result["max_points"],
+            pollution_percentage=pollution_pct,
+            cleanliness_percentage=result["cleanliness_percentage"],
+            risk_level=result["risk_level"],
+            hygiene_level=result["hygiene_level"],
+            teeth=None,  # per-tooth breakdown is a later feature (pixel v1 = overall)
+            recommendations=recommendations,
             report_id=report_id,
-            # Legacy compat
             php_index=pollution_pct / 100.0 if pollution_pct else None,
             plaque_percentage=pollution_pct,
         )
 
-    except ValueError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Analysis error: {e}")
         raise HTTPException(status_code=500, detail="Ошибка анализа. Попробуйте ещё раз.")
