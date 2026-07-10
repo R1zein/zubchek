@@ -32,6 +32,8 @@ class AnalyzeResponse(BaseModel):
     hygiene_level: Optional[str] = None
     teeth: Optional[dict] = None
     recommendations: Optional[list] = None
+    orthodontic_detected: bool = False
+    orthodontic_type: Optional[str] = None
     error: Optional[str] = None
     message: Optional[str] = None
     report_id: Optional[int] = None
@@ -72,7 +74,7 @@ async def analyze_photo(
     fallback). Photo validation is done with lenient pixel heuristics.
     """
     from services.pixel_analysis import analyze_teeth_pixels
-    from services.teeth_analysis import compute_z_index, generate_recommendations
+    from services.teeth_analysis import compute_z_index, detect_ortho_and_recommend
 
     try:
         if not data.image:
@@ -100,10 +102,11 @@ async def analyze_photo(
         # 3. Severity-weighted Z-Index from pixel percentages
         z = compute_z_index(px["overall_color_percentages"])
 
-        # 4. Text recommendations (LLM text-only; static fallback on failure)
-        recommendations = await generate_recommendations(
-            z["pollution_percentage"], z["risk_level"], z["color_percentages"]
+        # 4. One Claude vision call: orthodontic detection + tailored recommendations
+        rec = await detect_ortho_and_recommend(
+            data.image, z["pollution_percentage"], z["risk_level"], z["color_percentages"]
         )
+        recommendations = rec["recommendations"]
 
         result = {
             "color_percentages": z["color_percentages"],
@@ -115,6 +118,8 @@ async def analyze_photo(
             "risk_level": z["risk_level"],
             "hygiene_level": z["hygiene_level"],
             "recommendations": recommendations,
+            "orthodontic_detected": rec["orthodontic_detected"],
+            "orthodontic_type": rec["orthodontic_type"],
             "teeth": px.get("teeth"),
             "tooth_coverage_percent": px.get("tooth_coverage_percent"),
             "stained_area_percent": px.get("stained_area_percent"),
@@ -162,6 +167,8 @@ async def analyze_photo(
             hygiene_level=result["hygiene_level"],
             teeth=result["teeth"],
             recommendations=recommendations,
+            orthodontic_detected=result["orthodontic_detected"],
+            orthodontic_type=result["orthodontic_type"],
             report_id=report_id,
             php_index=pollution_pct / 100.0 if pollution_pct else None,
             plaque_percentage=pollution_pct,

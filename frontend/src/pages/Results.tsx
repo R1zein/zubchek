@@ -43,6 +43,8 @@ interface AnalysisResult {
   hygiene_level?: string;
   teeth?: Record<string, ToothResult>;
   recommendations?: string[];
+  orthodontic_detected?: boolean;
+  orthodontic_type?: string | null;
   report_id?: number;
   error?: string;
   message?: string;
@@ -340,6 +342,20 @@ export default function Results() {
           )}
 
 
+
+          {/* Orthodontic appliance detected (automatic) */}
+          {analysisResult.orthodontic_detected && (
+            <div className="mb-4 sm:mb-6 p-3 sm:p-4 rounded-lg bg-sky-50 dark:bg-sky-900/30 border border-sky-200 dark:border-sky-800">
+              <p className="text-sm sm:text-base font-medium text-sky-800 dark:text-sky-300">
+                🦷 {t("orthodontic_detected")}
+              </p>
+              {analysisResult.orthodontic_type && (
+                <p className="text-xs sm:text-sm text-sky-700 dark:text-sky-400 mt-1">
+                  {t("orthodontic_type")}: {analysisResult.orthodontic_type}
+                </p>
+              )}
+            </div>
+          )}
 
           {/* Recommendations */}
           {analysisResult.recommendations && analysisResult.recommendations.length > 0 && (

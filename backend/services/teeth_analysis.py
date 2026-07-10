@@ -318,6 +318,63 @@ async def generate_recommendations(pollution_pct: int, risk_level: str, color_pc
     return _static_recommendations(risk_level)
 
 
+async def detect_ortho_and_recommend(
+    image_data_uri: str, pollution_pct: int, risk_level: str, color_pct: dict, lang: str = "ru"
+) -> dict:
+    """One Claude vision call: detect orthodontic appliances in the photo AND
+    write hygiene recommendations tailored to them.
+
+    The numeric index comes from the pixel analyzer; this is the semantic vision
+    + text part. Returns {orthodontic_detected, orthodontic_type, recommendations}.
+    Falls back to static recommendations (no appliance) if the AI is unavailable.
+    """
+    lang_line = "Отвечай ТОЛЬКО на русском языке." if lang == "ru" else "Respond ONLY in English."
+    prompt = (
+        "Ты — стоматолог-гигиенист. Перед тобой фото зубов, окрашенных индикатором налёта, "
+        "и числовые данные анализа.\n" + lang_line + "\n\n"
+        f"Данные: загрязнённость {pollution_pct}%, риск {risk_level}. "
+        f"Состав налёта: свежий {color_pct.get('purple', 0)}%, средний {color_pct.get('blue', 0)}%, "
+        f"старый {color_pct.get('light_blue', 0)}%, чистая эмаль {color_pct.get('white', 0)}%.\n\n"
+        "Задачи:\n"
+        "1. Найди на фото ортодонтические конструкции: брекеты (брекеты/дуги/лигатуры), "
+        "элайнеры (прозрачные капы), ретейнеры, аттачменты, пластинки, расширители. "
+        "Определи ТИП, если что-то есть.\n"
+        "2. Дай 4–6 практических рекомендаций по гигиене. Если есть ортодонтическая конструкция — "
+        "обязательно включи уход именно под неё (ёршики/суперфлосс/воск для брекетов; "
+        "чистка, снятие перед едой и хранение для элайнеров; и т.д.).\n\n"
+        "Ответь ТОЛЬКО валидным JSON:\n"
+        '{"orthodontic_detected": true/false, "orthodontic_type": "тип или null", '
+        '"recommendations": ["...", "..."]}'
+    )
+    try:
+        service = AIHubService()
+        compressed = compress_image_data_uri(image_data_uri, max_size=1280, quality=75)
+        request = GenTxtRequest(
+            messages=[ChatMessage(role="user", content=[
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": {"url": compressed}},
+            ])],
+            model=get_ai_model(),
+            max_tokens=1200,
+        )
+        response = await service.gentxt(request)
+        payload = json.loads(extract_json_block(response.content.strip()))
+        recs = payload.get("recommendations") or []
+        if isinstance(recs, list) and recs:
+            return {
+                "orthodontic_detected": bool(payload.get("orthodontic_detected", False)),
+                "orthodontic_type": payload.get("orthodontic_type") or None,
+                "recommendations": [str(x) for x in recs][:8],
+            }
+    except Exception as e:  # pragma: no cover - defensive
+        logger.warning(f"ortho+recommend AI failed, using fallback: {e}")
+    return {
+        "orthodontic_detected": False,
+        "orthodontic_type": None,
+        "recommendations": _static_recommendations(risk_level),
+    }
+
+
 async def analyze_teeth_photo(image_data_uri: str) -> dict:
     """Analyze a teeth photo using AI multimodal capabilities with Z-Index."""
     service = AIHubService()
