@@ -1,6 +1,6 @@
 import { useRef, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { AlertTriangle, Download } from "lucide-react";
+import { AlertTriangle, FileText, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { getSession, client } from "@/lib/auth";
 import AppHeader from "@/components/AppHeader";
@@ -55,6 +55,8 @@ export default function Results() {
   const location = useLocation();
   const navigate = useNavigate();
   const reportRef = useRef<HTMLDivElement>(null);
+  const page1Ref = useRef<HTMLDivElement>(null);
+  const page2Ref = useRef<HTMLDivElement>(null);
   const { t, lang } = useLanguage();
   const { analysisResult, imageDataUri, assignedPatient } = (location.state as {
     analysisResult: AnalysisResult;
@@ -84,21 +86,66 @@ export default function Results() {
     assignReport();
   }, [assignedPatient, analysisResult?.report_id]);
 
-  // Print the report to a real, paginated PDF (text stays selectable, Cyrillic
-  // renders natively, and it looks correct on desktop and mobile). We force the
-  // light theme for the print so the paper output isn't dark, then restore it.
-  const handlePrint = () => {
-    const html = document.documentElement;
-    const wasDark = html.classList.contains("dark");
-    const restore = () => {
-      if (wasDark) html.classList.add("dark");
-      window.removeEventListener("afterprint", restore);
+  // Render a DOM element to a canvas in the LIGHT theme (so the export isn't
+  // dark), restoring the theme afterwards. html2canvas is imported lazily so it
+  // never runs during the blog prerender and stays out of the initial bundle.
+  const captureToCanvas = async (el: HTMLElement) => {
+    const html2canvas = (await import("html2canvas")).default;
+    const root = document.documentElement;
+    const wasDark = root.classList.contains("dark");
+    if (wasDark) root.classList.remove("dark");
+    try {
+      return await html2canvas(el, {
+        backgroundColor: "#ffffff",
+        scale: 2,
+        useCORS: true,
+        logging: false,
+      });
+    } finally {
+      if (wasDark) root.classList.add("dark");
+    }
+  };
+
+  const fileStamp = () => new Date().toISOString().slice(0, 10);
+
+  // PNG: the whole report as one image.
+  const handlePng = async () => {
+    if (!reportRef.current) return;
+    const canvas = await captureToCanvas(reportRef.current);
+    const link = document.createElement("a");
+    link.download = `zubchek-report-${fileStamp()}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+  };
+
+  // PDF: exactly two A4 pages — page 1 = index + per-tooth, page 2 = recommendations.
+  // Each section is scaled to fit within its page.
+  const handlePdf = async () => {
+    if (!page1Ref.current) return;
+    const { jsPDF } = await import("jspdf");
+    const pdf = new jsPDF({ unit: "mm", format: "a4" });
+    const pageW = pdf.internal.pageSize.getWidth();
+    const pageH = pdf.internal.pageSize.getHeight();
+    const margin = 10;
+    const maxW = pageW - margin * 2;
+    const maxH = pageH - margin * 2;
+
+    const addSection = async (el: HTMLElement, isFirst: boolean) => {
+      const canvas = await captureToCanvas(el);
+      let w = maxW;
+      let h = (canvas.height * w) / canvas.width;
+      if (h > maxH) {
+        h = maxH;
+        w = (canvas.width * h) / canvas.height;
+      }
+      const x = margin + (maxW - w) / 2;
+      if (!isFirst) pdf.addPage();
+      pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, margin, w, h);
     };
-    if (wasDark) html.classList.remove("dark");
-    window.addEventListener("afterprint", restore);
-    window.print();
-    // Fallback restore for browsers that don't fire afterprint (some mobile).
-    setTimeout(restore, 1500);
+
+    await addSection(page1Ref.current, true);
+    if (page2Ref.current) await addSection(page2Ref.current, false);
+    pdf.save(`zubchek-report-${fileStamp()}.pdf`);
   };
 
   if (!analysisResult) {
@@ -143,6 +190,8 @@ export default function Results() {
       {/* Content */}
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-lg lg:max-w-4xl mx-auto w-full">
         <div ref={reportRef} id="report-printable" className="bg-white dark:bg-gray-900 p-4 sm:p-6">
+          {/* PDF page 1 — general index + per-tooth */}
+          <div ref={page1Ref}>
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-6">{dateStr}</h2>
 
           {imageDataUri && (
@@ -268,7 +317,10 @@ export default function Results() {
               )}
             </div>
           )}
+          </div>{/* end PDF page 1 */}
 
+          {/* PDF page 2 — recommendations only */}
+          <div ref={page2Ref}>
           {/* Recommendations */}
           {analysisResult.recommendations && analysisResult.recommendations.length > 0 && (
             <div className="mb-4 sm:mb-6">
@@ -288,16 +340,27 @@ export default function Results() {
           <div className="pt-3 mt-3 border-t border-gray-100 dark:border-gray-800 text-center">
             <span className="text-xs text-gray-400">{t("branding_footer")}</span>
           </div>
+          </div>{/* end PDF page 2 */}
         </div>
 
         <div className="no-print flex flex-col gap-3 mt-4 sm:mt-6">
-          <Button
-            onClick={handlePrint}
-            className="w-full bg-purple-600 hover:bg-purple-700 text-white py-5 sm:py-6 text-base sm:text-lg rounded-xl"
-          >
-            <Download className="mr-2 h-5 w-5" />
-            {t("download_report")}
-          </Button>
+          <div className="flex gap-3">
+            <Button
+              onClick={handlePdf}
+              className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-5 sm:py-6 text-base sm:text-lg rounded-xl"
+            >
+              <FileText className="mr-2 h-5 w-5" />
+              PDF
+            </Button>
+            <Button
+              onClick={handlePng}
+              variant="outline"
+              className="flex-1 py-5 sm:py-6 text-base sm:text-lg rounded-xl border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/30"
+            >
+              <ImageIcon className="mr-2 h-5 w-5" />
+              PNG
+            </Button>
+          </div>
           <Button
             onClick={() => navigate("/")}
             variant="outline"
