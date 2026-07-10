@@ -234,8 +234,10 @@ Respond ONLY with valid JSON:
                 {"type": "image_url", "image_url": {"url": image_data}},
             ])]
 
+        from services.teeth_analysis import get_ai_model
+
         request = GenTxtRequest(
-            model="gemini-2.5-pro",
+            model=get_ai_model(),
             messages=messages,
         )
 

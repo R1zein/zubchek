@@ -3,11 +3,21 @@ import re
 import logging
 import base64
 import io
+import os
 
 from services.aihub import AIHubService
 from schemas.aihub import GenTxtRequest, ChatMessage
 
 logger = logging.getLogger(__name__)
+
+# Vision model used for teeth analysis. Overridable via the APP_AI_MODEL env
+# var so the provider/model can be swapped without code changes.
+DEFAULT_AI_MODEL = "claude-opus-4-8"
+
+
+def get_ai_model() -> str:
+    """Return the configured analysis model, falling back to the default."""
+    return os.getenv("APP_AI_MODEL") or DEFAULT_AI_MODEL
 
 
 def compress_image_data_uri(data_uri: str, max_size: int = 1024, quality: int = 70) -> str:
@@ -278,7 +288,7 @@ async def analyze_teeth_photo(image_data_uri: str) -> dict:
                 ],
             ),
         ],
-        model="gemini-2.5-pro",
+        model=get_ai_model(),
     )
 
     response = await service.gentxt(request)
@@ -295,7 +305,7 @@ async def analyze_teeth_photo(image_data_uri: str) -> dict:
                 ChatMessage(role="system", content="Fix this into valid JSON only. Do not add any explanation."),
                 ChatMessage(role="user", content=payload_text),
             ],
-            model="gemini-2.5-pro",
+            model=get_ai_model(),
         )
         repaired = await service.gentxt(repair_request)
         try:
