@@ -107,13 +107,37 @@ def _classify(hsv: np.ndarray) -> np.ndarray:
     return labels
 
 
-def _per_tooth(labels: np.ndarray) -> dict:
-    """Split the tooth region into 12 cells (2 arches x 6 teeth) geometrically
-    and compute per-tooth colour percentages using the same pixel labels.
+def _split_columns(col_counts: np.ndarray, x0: int, x1: int, n: int) -> list:
+    """Return n+1 column edges in [x0, x1], with the n-1 internal cuts snapped
+    to the interdental gaps (local minima of tooth-pixel density) near evenly
+    spaced targets. Falls back to even spacing where no clear gap is found.
+    """
+    w = x1 - x0
+    if w <= n:
+        return list(np.linspace(x0, x1, n + 1).astype(int))
+    # Smooth the density profile so we snap to real valleys, not pixel noise.
+    k = max(3, w // 60)
+    smooth = np.convolve(col_counts.astype(float), np.ones(k) / k, mode="same")
+    edges = [x0]
+    min_gap = max(4, w // (2 * n))          # keep teeth from collapsing
+    win = max(5, w // (2 * n))              # search radius around each target
+    for i in range(1, n):
+        target = x0 + round(w * i / n)
+        a = max(edges[-1] + min_gap, target - win)
+        b = min(x1 - min_gap, target + win)
+        cut = a + int(np.argmin(smooth[a:b])) if b > a else int(target)
+        edges.append(int(cut))
+    edges.append(x1)
+    return edges
 
-    v1 is a geometric partition: the two arches are separated at the row with the
-    fewest tooth pixels (the mouth gap / occlusal line), then each arch's tooth
-    width is divided into 6 equal columns left->right.
+
+def _per_tooth(labels: np.ndarray) -> dict:
+    """Split the tooth region into 12 cells (2 arches x 6 teeth) and compute
+    per-tooth colour percentages + plaque index from the same pixel labels.
+
+    The two arches are separated at the row with the fewest tooth pixels (the
+    mouth gap / occlusal line); within each arch the column cuts snap to the
+    interdental gaps (see ``_split_columns``) rather than using equal widths.
     """
     H, W = labels.shape
     white = labels == L_WHITE
@@ -136,9 +160,10 @@ def _per_tooth(labels: np.ndarray) -> dict:
         xs = np.where(col_counts > 0)[0]
         if xs.size == 0:
             for tid in ids:
-                teeth[tid] = {"missing": True, "white": 0, "purple": 0, "blue": 0, "light_blue": 0}
+                teeth[tid] = {"missing": True, "white": 0, "purple": 0, "blue": 0,
+                              "light_blue": 0, "pollution_percentage": 0}
             return
-        edges = np.linspace(xs.min(), xs.max() + 1, len(ids) + 1).astype(int)
+        edges = _split_columns(col_counts, int(xs.min()), int(xs.max()) + 1, len(ids))
         for i, tid in enumerate(ids):
             cx0, cx1 = edges[i], edges[i + 1]
             cell = np.zeros_like(tooth)
@@ -149,13 +174,17 @@ def _per_tooth(labels: np.ndarray) -> dict:
             c = int((cyan & cell).sum())
             tot = w + p + b + c
             if tot < min_cell:
-                teeth[tid] = {"missing": True, "white": 0, "purple": 0, "blue": 0, "light_blue": 0}
+                teeth[tid] = {"missing": True, "white": 0, "purple": 0, "blue": 0,
+                              "light_blue": 0, "pollution_percentage": 0}
             else:
                 pw = round(100 * w / tot)
                 pp = round(100 * p / tot)
                 pb = round(100 * b / tot)
                 pc = max(0, 100 - pw - pp - pb)
-                teeth[tid] = {"missing": False, "white": pw, "purple": pp, "blue": pb, "light_blue": pc}
+                # Severity-weighted plaque index for this tooth (same as overall).
+                pollution = round((pp * 1 + pb * 2 + pc * 3) / 3)
+                teeth[tid] = {"missing": False, "white": pw, "purple": pp, "blue": pb,
+                              "light_blue": pc, "pollution_percentage": min(pollution, 100)}
 
     fill_arch(0, split, UPPER_TOOTH_IDS)
     fill_arch(split, H, LOWER_TOOTH_IDS)
