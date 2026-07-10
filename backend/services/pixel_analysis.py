@@ -33,9 +33,12 @@ WHITE_V_MIN = 110      # value above this (and low sat) = clean white enamel
 DYE_S_MIN = 45         # min saturation for a pixel to count as colored dye
 
 # Hue band edges in degrees (converted to PIL scale below).
-H_CYAN_LO, H_CYAN_HI = 165, 200       # light blue / cyan  (oldest plaque)
-H_BLUE_LO, H_BLUE_HI = 200, 255       # blue               (medium plaque)
-H_PURPLE_LO, H_PURPLE_HI = 255, 315   # purple / violet    (freshest plaque)
+# In real 2-tone dye photos "голубой" (light blue) and "синий" (blue) share the
+# same hue — they differ by BRIGHTNESS, not hue. So we take one blue hue band
+# and split it by Value: bright => light_blue (old plaque), dark => blue (medium).
+BLUE_HUE_LO, BLUE_HUE_HI = 165, 255   # whole blue family (light + dark)
+LIGHT_BLUE_V_MIN = 200                # bright blue => light_blue/голубой (old)
+H_PURPLE_LO, H_PURPLE_HI = 255, 315   # purple / violet (freshest plaque)
 # Everything else with high saturation (red/pink gums, orange skin) = non-tooth.
 
 # Pixel labels
@@ -83,11 +86,12 @@ def _classify(hsv: np.ndarray) -> np.ndarray:
     def band(lo_deg, hi_deg):
         return colored & (H >= lo_deg * _DEG) & (H < hi_deg * _DEG)
 
-    cyan = band(H_CYAN_LO, H_CYAN_HI)
-    blue = band(H_BLUE_LO, H_BLUE_HI)
+    blue_family = band(BLUE_HUE_LO, BLUE_HUE_HI)
+    cyan = blue_family & (V >= LIGHT_BLUE_V_MIN)   # bright blue = light_blue (old)
+    blue = blue_family & ~cyan                     # darker blue = medium
     purple = band(H_PURPLE_LO, H_PURPLE_HI)
     # Colored but outside the dye hue bands = gums/lips/tongue (red/pink/orange).
-    gum = colored & ~(cyan | blue | purple)
+    gum = colored & ~(blue_family | purple)
 
     labels[dark] = L_DARK
     labels[white] = L_WHITE
