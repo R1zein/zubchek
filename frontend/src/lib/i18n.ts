@@ -36,7 +36,7 @@ export const translations = {
   "extended_recs_loading": { ru: "Генерация расширенных рекомендаций...", en: "Generating extended recommendations..." },
   "orthodontic_detected": { ru: "Обнаружены ортодонтические конструкции", en: "Orthodontic appliances detected" },
   "orthodontic_type": { ru: "Тип конструкции", en: "Appliance type" },
-  "download_report": { ru: "Сохранить отчёт (PDF)", en: "Save report (PDF)" },
+  "download_report": { ru: "Скачать отчёт", en: "Download report" },
   "creating_file": { ru: "Создание файла...", en: "Creating file..." },
   "new_analysis": { ru: "Новый анализ", en: "New Analysis" },
   "no_data": { ru: "Нет данных для отображения", en: "No data to display" },

@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { createClient } from "../lib/mgxClient";
-import { Loader2, AlertTriangle, FileText, Image as ImageIcon } from "lucide-react";
+import { Loader2, AlertTriangle, Download, FileText, Image as ImageIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import AppHeader from "@/components/AppHeader";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -72,6 +73,7 @@ export default function SharedReport() {
   const reportRef = useRef<HTMLDivElement>(null);
   const page1Ref = useRef<HTMLDivElement>(null);
   const page2Ref = useRef<HTMLDivElement>(null);
+  const [downloadOpen, setDownloadOpen] = useState(false);
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -125,6 +127,7 @@ export default function SharedReport() {
   const fileStamp = () => new Date().toISOString().slice(0, 10);
 
   const handlePng = async () => {
+    setDownloadOpen(false);
     if (!reportRef.current) return;
     const canvas = await captureToCanvas(reportRef.current);
     const link = document.createElement("a");
@@ -135,6 +138,7 @@ export default function SharedReport() {
 
   // PDF: page 1 = index + per-tooth, page 2 = recommendations.
   const handlePdf = async () => {
+    setDownloadOpen(false);
     if (!page1Ref.current) return;
     const { jsPDF } = await import("jspdf");
     const pdf = new jsPDF({ unit: "mm", format: "a4" });
@@ -387,23 +391,13 @@ export default function SharedReport() {
         </div>
 
         <div className="no-print flex flex-col gap-3 mt-4 sm:mt-6">
-          <div className="flex gap-3">
-            <Button
-              onClick={handlePdf}
-              className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-5 sm:py-6 text-base sm:text-lg rounded-xl"
-            >
-              <FileText className="mr-2 h-5 w-5" />
-              PDF
-            </Button>
-            <Button
-              onClick={handlePng}
-              variant="outline"
-              className="flex-1 py-5 sm:py-6 text-base sm:text-lg rounded-xl border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/30"
-            >
-              <ImageIcon className="mr-2 h-5 w-5" />
-              PNG
-            </Button>
-          </div>
+          <Button
+            onClick={() => setDownloadOpen(true)}
+            className="w-full bg-purple-600 hover:bg-purple-700 text-white py-5 sm:py-6 text-base sm:text-lg rounded-xl"
+          >
+            <Download className="mr-2 h-5 w-5" />
+            {t("download_report")}
+          </Button>
           <Button
             onClick={() => navigate("/")}
             variant="outline"
@@ -412,6 +406,31 @@ export default function SharedReport() {
             {t("new_analysis")}
           </Button>
         </div>
+
+        <Dialog open={downloadOpen} onOpenChange={setDownloadOpen}>
+          <DialogContent className="sm:max-w-sm">
+            <DialogHeader>
+              <DialogTitle>{lang === "ru" ? "Скачать отчёт" : "Download report"}</DialogTitle>
+            </DialogHeader>
+            <div className="flex flex-col gap-3 pt-2">
+              <Button
+                onClick={handlePdf}
+                className="w-full bg-purple-600 hover:bg-purple-700 text-white py-5 text-base rounded-xl"
+              >
+                <FileText className="mr-2 h-5 w-5" />
+                PDF {lang === "ru" ? "(2 страницы)" : "(2 pages)"}
+              </Button>
+              <Button
+                onClick={handlePng}
+                variant="outline"
+                className="w-full py-5 text-base rounded-xl border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/30"
+              >
+                <ImageIcon className="mr-2 h-5 w-5" />
+                PNG {lang === "ru" ? "(изображение)" : "(image)"}
+              </Button>
+            </div>
+          </DialogContent>
+        </Dialog>
       </main>
     </div>
   );
