@@ -107,28 +107,63 @@ def _classify(hsv: np.ndarray) -> np.ndarray:
     return labels
 
 
-def _split_columns(col_counts: np.ndarray, x0: int, x1: int, n: int) -> list:
-    """Return n+1 column edges in [x0, x1], with the n-1 internal cuts snapped
-    to the interdental gaps (local minima of tooth-pixel density) near evenly
-    spaced targets. Falls back to even spacing where no clear gap is found.
+def _tooth_centers(profile: np.ndarray, min_dist: int) -> list:
+    """Local maxima of the density profile (tooth centres), thinned so no two
+    are closer than ``min_dist`` (keeping the taller one)."""
+    n = len(profile)
+    cand = [i for i in range(1, n - 1) if profile[i] >= profile[i - 1] and profile[i] > profile[i + 1]]
+    cand.sort(key=lambda i: -profile[i])
+    kept: list = []
+    for p in cand:
+        if all(abs(p - q) >= min_dist for q in kept):
+            kept.append(p)
+    return sorted(kept)
+
+
+def _valley(profile: np.ndarray, a: int, b: int) -> int:
+    """Column of minimum density (the interdental gap) in [a, b)."""
+    a = max(a, 0)
+    b = min(b, len(profile))
+    if b <= a + 1:
+        return (a + b) // 2
+    return a + int(np.argmin(profile[a:b]))
+
+
+def _arch_edges(col_counts: np.ndarray, x0: int, x1: int, n: int = 6) -> list:
+    """Return n+1 column edges bounding the n CENTRAL anterior teeth.
+
+    Detects tooth centres, keeps the n straddling the arch midline (so extra
+    side teeth beyond the canines are excluded), and places boundaries at the
+    interdental gaps — including the canine↔premolar gap as the outer edges.
+    Falls back to even spacing if centres can't be found.
     """
     w = x1 - x0
+    even = list(np.linspace(x0, x1, n + 1).astype(int))
     if w <= n:
-        return list(np.linspace(x0, x1, n + 1).astype(int))
-    # Smooth the density profile so we snap to real valleys, not pixel noise.
-    k = max(3, w // 60)
-    smooth = np.convolve(col_counts.astype(float), np.ones(k) / k, mode="same")
-    edges = [x0]
-    min_gap = max(4, w // (2 * n))          # keep teeth from collapsing
-    win = max(5, w // (2 * n))              # search radius around each target
-    for i in range(1, n):
-        target = x0 + round(w * i / n)
-        a = max(edges[-1] + min_gap, target - win)
-        b = min(x1 - min_gap, target + win)
-        cut = a + int(np.argmin(smooth[a:b])) if b > a else int(target)
-        edges.append(int(cut))
-    edges.append(x1)
-    return edges
+        return even
+    k = max(3, w // 50)
+    sm = np.convolve(col_counts.astype(float), np.ones(k) / k, mode="same")
+    centers = [c for c in _tooth_centers(sm, min_dist=max(6, w // 12)) if x0 <= c <= x1]
+    if len(centers) < n:
+        return even
+    xc = x0 + int(np.average(np.arange(w), weights=(col_counts[x0:x1] + 1e-9)))
+    half = n // 2
+    left = sorted(c for c in centers if c < xc)
+    right = sorted(c for c in centers if c >= xc)
+    sel = (left[-half:] if len(left) >= half else left) + (right[:half] if len(right) >= half else right)
+    sel = sorted(sel)
+    if len(sel) < n:
+        return even
+    sel = sel[:n]
+    # Anterior region = from the canine↔premolar gap on each side (this drops
+    # the extra side teeth). Divide it into n even columns — real anterior
+    # teeth are close to even width, and even cuts are far more stable than
+    # snapping to the shallow gaps between touching anterior teeth.
+    prev = [c for c in centers if c < sel[0]]
+    nxt = [c for c in centers if c > sel[-1]]
+    xa = _valley(sm, max(prev), sel[0]) if prev else x0
+    xb = _valley(sm, sel[-1], min(nxt)) if nxt else x1
+    return list(np.linspace(xa, xb, n + 1).astype(int))
 
 
 def _per_tooth(labels: np.ndarray) -> dict:
@@ -163,7 +198,7 @@ def _per_tooth(labels: np.ndarray) -> dict:
                 teeth[tid] = {"missing": True, "white": 0, "purple": 0, "blue": 0,
                               "light_blue": 0, "pollution_percentage": 0}
             return
-        edges = _split_columns(col_counts, int(xs.min()), int(xs.max()) + 1, len(ids))
+        edges = _arch_edges(col_counts, int(xs.min()), int(xs.max()) + 1, len(ids))
         for i, tid in enumerate(ids):
             cx0, cx1 = edges[i], edges[i + 1]
             cell = np.zeros_like(tooth)
