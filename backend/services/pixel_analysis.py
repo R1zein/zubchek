@@ -37,7 +37,7 @@ DYE_S_MIN = 45         # min saturation for a pixel to count as colored dye
 # same hue — they differ by BRIGHTNESS, not hue. So we take one blue hue band
 # and split it by Value: bright => light_blue (old plaque), dark => blue (medium).
 BLUE_HUE_LO, BLUE_HUE_HI = 165, 255   # whole blue family (light + dark)
-LIGHT_BLUE_V_MIN = 200                # bright blue => light_blue/голубой (old)
+LIGHT_BLUE_V_MIN = 220                # only very light/pale blue => light_blue/голубой (old)
 H_PURPLE_LO, H_PURPLE_HI = 255, 315   # purple / violet (freshest plaque)
 # Everything else with high saturation (red/pink gums, orange skin) = non-tooth.
 
