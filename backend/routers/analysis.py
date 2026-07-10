@@ -135,6 +135,24 @@ async def analyze_photo(
         raise HTTPException(status_code=500, detail="Ошибка анализа. Попробуйте ещё раз.")
 
 
+@router.post("/analyze-pixels")
+async def analyze_pixels(data: AnalyzeRequest, debug: bool = Query(True)):
+    """Deterministic pixel-level color analysis (HSV thresholds).
+
+    Calibration/debug path — computes exact color-area percentages and (when
+    debug=true) returns a color-coded mask overlay. Does NOT call the LLM and
+    does NOT save a report.
+    """
+    if not data.image:
+        raise HTTPException(status_code=400, detail="Фото не предоставлено")
+    from services.pixel_analysis import analyze_teeth_pixels
+    try:
+        return analyze_teeth_pixels(data.image, debug=debug)
+    except Exception as e:
+        logger.error(f"Pixel analysis error: {e}")
+        raise HTTPException(status_code=500, detail="Ошибка пиксельного анализа")
+
+
 class ExtendedRecsRequest(BaseModel):
     report_id: int
     lang: Optional[str] = "ru"

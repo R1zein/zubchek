@@ -36,3 +36,6 @@ PyMuPDF
 # payment module dependencies
 stripe>=12.0.0
 Pillow>=10.0.0
+
+# pixel-level image analysis (Z-Index color classification)
+numpy>=1.26.0
