@@ -217,10 +217,10 @@ export default function Results() {
 
   // Quadrant layout for per-tooth display (visual order left-to-right, .1 always on the left)
   const quadrants = [
-    { label: lang === "ru" ? "Квадрант 1 (верхний правый)" : "Quadrant 1 (upper right)", teeth: ["1.1", "1.2", "1.3"] },
-    { label: lang === "ru" ? "Квадрант 2 (верхний левый)" : "Quadrant 2 (upper left)", teeth: ["2.1", "2.2", "2.3"] },
-    { label: lang === "ru" ? "Квадрант 3 (нижний левый)" : "Quadrant 3 (lower left)", teeth: ["3.1", "3.2", "3.3"] },
-    { label: lang === "ru" ? "Квадрант 4 (нижний правый)" : "Quadrant 4 (lower right)", teeth: ["4.1", "4.2", "4.3"] },
+    { label: lang === "ru" ? "Квадрант 1" : "Quadrant 1", teeth: ["1.1", "1.2", "1.3"] },
+    { label: lang === "ru" ? "Квадрант 2" : "Quadrant 2", teeth: ["2.1", "2.2", "2.3"] },
+    { label: lang === "ru" ? "Квадрант 3" : "Quadrant 3", teeth: ["3.1", "3.2", "3.3"] },
+    { label: lang === "ru" ? "Квадрант 4" : "Quadrant 4", teeth: ["4.1", "4.2", "4.3"] },
   ];
 
   return (
