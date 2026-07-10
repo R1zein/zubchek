@@ -115,6 +115,7 @@ async def analyze_photo(
             "risk_level": z["risk_level"],
             "hygiene_level": z["hygiene_level"],
             "recommendations": recommendations,
+            "teeth": px.get("teeth"),
             "tooth_coverage_percent": px.get("tooth_coverage_percent"),
             "stained_area_percent": px.get("stained_area_percent"),
             "method": px.get("method"),
@@ -159,7 +160,7 @@ async def analyze_photo(
             cleanliness_percentage=result["cleanliness_percentage"],
             risk_level=result["risk_level"],
             hygiene_level=result["hygiene_level"],
-            teeth=None,  # per-tooth breakdown is a later feature (pixel v1 = overall)
+            teeth=result["teeth"],
             recommendations=recommendations,
             report_id=report_id,
             php_index=pollution_pct / 100.0 if pollution_pct else None,

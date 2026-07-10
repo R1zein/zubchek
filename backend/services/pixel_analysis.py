@@ -56,6 +56,11 @@ _OVERLAY_COLORS = {
 
 MAX_SIDE = 900  # downscale large photos for speed (area % is scale-invariant)
 
+# FDI tooth ids in viewer left -> right order for a non-mirrored frontal photo.
+# Upper arch = patient's right canine (1.3) .. left canine (2.3); lower likewise.
+UPPER_TOOTH_IDS = ["1.3", "1.2", "1.1", "2.1", "2.2", "2.3"]
+LOWER_TOOTH_IDS = ["4.3", "4.2", "4.1", "3.1", "3.2", "3.3"]
+
 
 def _decode_image(image_data_uri: str) -> Image.Image:
     if "," in image_data_uri:
@@ -100,6 +105,61 @@ def _classify(hsv: np.ndarray) -> np.ndarray:
     labels[purple] = L_PURPLE
     labels[gum] = L_GUM
     return labels
+
+
+def _per_tooth(labels: np.ndarray) -> dict:
+    """Split the tooth region into 12 cells (2 arches x 6 teeth) geometrically
+    and compute per-tooth colour percentages using the same pixel labels.
+
+    v1 is a geometric partition: the two arches are separated at the row with the
+    fewest tooth pixels (the mouth gap / occlusal line), then each arch's tooth
+    width is divided into 6 equal columns left->right.
+    """
+    H, W = labels.shape
+    white = labels == L_WHITE
+    purple = labels == L_PURPLE
+    blue = labels == L_BLUE
+    cyan = labels == L_CYAN
+    tooth = white | purple | blue | cyan
+    tooth_total = int(tooth.sum())
+
+    row_counts = tooth.sum(axis=1)
+    lo, hi = int(0.28 * H), int(0.72 * H)
+    split = (lo + int(np.argmin(row_counts[lo:hi]))) if hi > lo else H // 2
+
+    teeth: dict = {}
+    min_cell = max(200, int(tooth_total * 0.008))
+
+    def fill_arch(row0: int, row1: int, ids: list):
+        sub = tooth[row0:row1]
+        col_counts = sub.sum(axis=0)
+        xs = np.where(col_counts > 0)[0]
+        if xs.size == 0:
+            for tid in ids:
+                teeth[tid] = {"missing": True, "white": 0, "purple": 0, "blue": 0, "light_blue": 0}
+            return
+        edges = np.linspace(xs.min(), xs.max() + 1, len(ids) + 1).astype(int)
+        for i, tid in enumerate(ids):
+            cx0, cx1 = edges[i], edges[i + 1]
+            cell = np.zeros_like(tooth)
+            cell[row0:row1, cx0:cx1] = True
+            w = int((white & cell).sum())
+            p = int((purple & cell).sum())
+            b = int((blue & cell).sum())
+            c = int((cyan & cell).sum())
+            tot = w + p + b + c
+            if tot < min_cell:
+                teeth[tid] = {"missing": True, "white": 0, "purple": 0, "blue": 0, "light_blue": 0}
+            else:
+                pw = round(100 * w / tot)
+                pp = round(100 * p / tot)
+                pb = round(100 * b / tot)
+                pc = max(0, 100 - pw - pp - pb)
+                teeth[tid] = {"missing": False, "white": pw, "purple": pp, "blue": pb, "light_blue": pc}
+
+    fill_arch(0, split, UPPER_TOOTH_IDS)
+    fill_arch(split, H, LOWER_TOOTH_IDS)
+    return teeth
 
 
 def _overlay_b64(labels: np.ndarray) -> str:
@@ -154,6 +214,7 @@ def analyze_teeth_pixels(image_data_uri: str, debug: bool = True) -> dict:
         "counts": counts,
         "overall_color_percentages": color_pct,
         "stained_area_percent": stained_area,
+        "teeth": _per_tooth(labels),
     }
     if debug:
         result["debug_image"] = _overlay_b64(labels)
