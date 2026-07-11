@@ -39,3 +39,6 @@ Pillow>=10.0.0
 
 # pixel-level image analysis (Z-Index color classification)
 numpy>=1.26.0
+
+# Cloudflare R2 object storage for report photos (S3-compatible)
+boto3>=1.34.0

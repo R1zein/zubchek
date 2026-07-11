@@ -1,3 +1,4 @@
+import asyncio
 import json
 import logging
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
@@ -8,6 +9,7 @@ from sqlalchemy import text
 
 from core.database import get_db
 from services.teeth_analysis import analyze_teeth_photo
+from services.r2_storage import store_image
 from schemas.auth import UserResponse
 
 logger = logging.getLogger(__name__)
@@ -130,6 +132,9 @@ async def analyze_photo(
         report_id = None
         user_id = str(current_user.id) if current_user else None
         pollution_pct = result["pollution_percentage"]
+        # Offload the photo to R2 when configured (store a URL instead of base64);
+        # falls back to the base64 data URI otherwise. Runs off the event loop.
+        image_ref = await asyncio.to_thread(store_image, data.image)
         try:
             db_result = await db.execute(
                 text("""
@@ -144,7 +149,7 @@ async def analyze_photo(
                     "plaque_percentage": pollution_pct,
                     "risk_level": result["risk_level"],
                     "recommendations": json.dumps(recommendations, ensure_ascii=False),
-                    "image_data": data.image,
+                    "image_data": image_ref,
                     "analysis_type": "z_index_pixel",
                     "analysis_data": json.dumps(result, ensure_ascii=False),
                 },
