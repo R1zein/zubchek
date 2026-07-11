@@ -53,7 +53,11 @@ def upload_data_uri(data_uri: str) -> str:
     import boto3
     from botocore.config import Config
 
-    account = os.environ["R2_ACCOUNT_ID"]
+    # Tolerate R2_ACCOUNT_ID pasted as the full S3 endpoint (or with a scheme) —
+    # we only need the bare account id before ".r2.cloudflarestorage.com".
+    account = os.environ["R2_ACCOUNT_ID"].strip()
+    account = account.replace("https://", "").replace("http://", "")
+    account = account.split(".r2.cloudflarestorage.com", 1)[0].strip("/")
     bucket = os.environ["R2_BUCKET"]
     base_url = os.environ["R2_PUBLIC_BASE_URL"].rstrip("/")
 
