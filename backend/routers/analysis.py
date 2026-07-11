@@ -208,6 +208,37 @@ async def analyze_pixels(data: AnalyzeRequest, debug: bool = Query(True)):
         raise HTTPException(status_code=500, detail="Ошибка пиксельного анализа")
 
 
+# TEMPORARY one-off migration: move existing base64 report photos into R2.
+# Token-gated; remove this endpoint after the migration is done.
+@router.post("/migrate-photos-r2")
+async def migrate_photos_r2(
+    token: str = Query(""),
+    limit: int = Query(100),
+    db: AsyncSession = Depends(get_db),
+):
+    if token != "mig-7Kd9Qz-2026":
+        raise HTTPException(status_code=403, detail="forbidden")
+    from services.r2_storage import r2_configured
+    if not r2_configured():
+        raise HTTPException(status_code=400, detail="R2 not configured")
+
+    rows = await db.execute(
+        text("SELECT id, image_data FROM reports WHERE image_data LIKE 'data:%' ORDER BY id LIMIT :lim"),
+        {"lim": limit},
+    )
+    items = rows.fetchall()
+    migrated = 0
+    for rid, data in items:
+        url = await asyncio.to_thread(store_image, data)
+        if url and url.startswith("http"):
+            await db.execute(text("UPDATE reports SET image_data = :u WHERE id = :id"), {"u": url, "id": rid})
+            migrated += 1
+    await db.commit()
+    rem = await db.execute(text("SELECT count(*) FROM reports WHERE image_data LIKE 'data:%'"))
+    remaining = rem.scalar()
+    return {"migrated": migrated, "remaining": remaining}
+
+
 class ExtendedRecsRequest(BaseModel):
     report_id: int
     lang: Optional[str] = "ru"
