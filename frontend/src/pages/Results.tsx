@@ -96,15 +96,25 @@ export default function Results() {
     const root = document.documentElement;
     const wasDark = root.classList.contains("dark");
     if (wasDark) root.classList.remove("dark");
+    // Capture from the top of the document, independent of the current scroll —
+    // otherwise html2canvas offsets the content by the scroll amount (text slides down).
+    const prevX = window.scrollX;
+    const prevY = window.scrollY;
+    window.scrollTo(0, 0);
     try {
       return await html2canvas(el, {
         backgroundColor: "#ffffff",
         scale: 2,
         useCORS: true,
         logging: false,
+        scrollX: 0,
+        scrollY: 0,
+        windowWidth: document.documentElement.scrollWidth,
+        windowHeight: document.documentElement.scrollHeight,
       });
     } finally {
       if (wasDark) root.classList.add("dark");
+      window.scrollTo(prevX, prevY);
     }
   };
 
