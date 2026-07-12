@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { createClient } from "../lib/mgxClient";
-import { Loader2, AlertTriangle, Download, FileText, Image as ImageIcon } from "lucide-react";
+import { Loader2, AlertTriangle, Download, FileText, Image as ImageIcon, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { getSession } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
 import AppHeader from "@/components/AppHeader";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -67,6 +69,7 @@ export default function SharedReport() {
   const { reportId } = useParams<{ reportId: string }>();
   const navigate = useNavigate();
   const { t, lang } = useLanguage();
+  const { toast } = useToast();
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -74,6 +77,8 @@ export default function SharedReport() {
   const page1Ref = useRef<HTMLDivElement>(null);
   const page2Ref = useRef<HTMLDivElement>(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const [canSend, setCanSend] = useState(false);
+  const [sending, setSending] = useState(false);
 
   useEffect(() => {
     const fetchReport = async () => {
@@ -104,6 +109,27 @@ export default function SharedReport() {
     if (reportId) {
       fetchReport();
     }
+  }, [reportId]);
+
+  // If a doctor is viewing this report, check whether the patient has an email
+  // (so we can show the "Send report to patient" button).
+  useEffect(() => {
+    const checkRecipient = async () => {
+      const session = getSession();
+      if (!session || session.role !== "doctor" || !reportId) return;
+      try {
+        const res = await client.apiCall.invoke({
+          url: `/api/v1/invite/report-recipient/${reportId}?current_user_id=${encodeURIComponent(session.user_id)}`,
+          method: "GET",
+          data: {},
+        });
+        const body = res?.data ?? res;
+        setCanSend(!!body?.has_email);
+      } catch {
+        setCanSend(false);
+      }
+    };
+    checkRecipient();
   }, [reportId]);
 
   // Print the report to a real, paginated PDF (see Results.tsx for rationale).
@@ -147,9 +173,7 @@ export default function SharedReport() {
   };
 
   // PDF: page 1 = index + per-tooth, page 2 = recommendations.
-  const handlePdf = async () => {
-    setDownloadOpen(false);
-    if (!page1Ref.current) return;
+  const buildPdf = async () => {
     const { jsPDF } = await import("jspdf");
     const pdf = new jsPDF({ unit: "mm", format: "a4" });
     const pageW = pdf.internal.pageSize.getWidth();
@@ -171,9 +195,43 @@ export default function SharedReport() {
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, margin, w, h);
     };
 
-    await addSection(page1Ref.current, true);
+    if (page1Ref.current) await addSection(page1Ref.current, true);
     if (page2Ref.current) await addSection(page2Ref.current, false);
+    return pdf;
+  };
+
+  const handlePdf = async () => {
+    setDownloadOpen(false);
+    if (!page1Ref.current) return;
+    const pdf = await buildPdf();
     pdf.save(`zubchek-report-${fileStamp()}.pdf`);
+  };
+
+  const handleSendToPatient = async () => {
+    const session = getSession();
+    if (!session || session.role !== "doctor" || !reportId) return;
+    setSending(true);
+    try {
+      const pdf = await buildPdf();
+      const dataUri = pdf.output("datauristring");
+      await client.apiCall.invoke({
+        url: `/api/v1/invite/send-report-email?current_user_id=${encodeURIComponent(session.user_id)}`,
+        method: "POST",
+        data: {
+          report_id: Number(reportId),
+          pdf_base64: dataUri,
+          filename: `zubchek-report-${fileStamp()}.pdf`,
+        },
+      });
+      toast({ title: t("report_sent") });
+    } catch (err: unknown) {
+      const error = err as Record<string, unknown>;
+      const data = error?.data as Record<string, unknown> | undefined;
+      const detail = (data?.detail as string) || (error?.message as string) || t("report_send_error");
+      toast({ title: t("error"), description: detail, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
   };
 
   if (loading) {
@@ -408,6 +466,17 @@ export default function SharedReport() {
             <Download className="mr-2 h-5 w-5" />
             {t("download_report")}
           </Button>
+          {canSend && (
+            <Button
+              onClick={handleSendToPatient}
+              disabled={sending}
+              variant="outline"
+              className="w-full py-5 sm:py-6 text-base sm:text-lg rounded-xl border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/30"
+            >
+              {sending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Send className="mr-2 h-5 w-5" />}
+              {sending ? t("sending") : t("send_to_patient")}
+            </Button>
+          )}
           <Button
             onClick={() => navigate("/")}
             variant="outline"

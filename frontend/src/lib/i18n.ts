@@ -129,6 +129,28 @@ export const translations = {
   "analysis_error": { ru: "Ошибка анализа", en: "Analysis Error" },
   "analysis_error_retry": { ru: "Ошибка анализа. Попробуйте ещё раз.", en: "Analysis error. Please try again." },
 
+  // Email auth (verification codes, patient email login)
+  "email_label": { ru: "Почта", en: "Email" },
+  "enter_email": { ru: "Введите почту", en: "Enter email" },
+  "email_placeholder": { ru: "example@mail.com", en: "example@mail.com" },
+  "patient_email": { ru: "Почта пациента", en: "Patient email" },
+  "patient_email_optional": { ru: "Почта пациента (необязательно)", en: "Patient email (optional)" },
+  "patient_email_hint": { ru: "Если указать почту — пациент сможет входить в систему и получать отчёты на почту.", en: "With an email, the patient can log in and receive reports by email." },
+  "verification_code": { ru: "Код подтверждения", en: "Verification code" },
+  "enter_code": { ru: "Введите код из письма", en: "Enter the code from the email" },
+  "code_sent_to": { ru: "Мы отправили код на", en: "We sent a code to" },
+  "confirm": { ru: "Подтвердить", en: "Confirm" },
+  "verifying": { ru: "Проверка...", en: "Verifying..." },
+  "resend_code": { ru: "Отправить код повторно", en: "Resend code" },
+  "code_resent": { ru: "Код отправлен повторно", en: "Code resent" },
+  "get_code": { ru: "Получить код", en: "Get code" },
+  "sending_code": { ru: "Отправка кода...", en: "Sending code..." },
+  "patient_login_email_hint": { ru: "Введите почту, которую указал ваш врач. Мы отправим на неё код для входа.", en: "Enter the email your doctor registered. We'll email you a login code." },
+  "send_to_patient": { ru: "Отправить отчёт пациенту", en: "Send report to patient" },
+  "sending": { ru: "Отправка...", en: "Sending..." },
+  "report_sent": { ru: "Отчёт отправлен на почту пациента", en: "Report sent to patient's email" },
+  "report_send_error": { ru: "Не удалось отправить отчёт", en: "Failed to send report" },
+
   // Footer
   "branding_footer": { ru: "zubchek.me • AI-анализ гигиены полости рта", en: "zubchek.me • AI oral hygiene analysis" },
 } as const;

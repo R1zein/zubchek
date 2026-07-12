@@ -1,6 +1,6 @@
 from core.database import Base
 from datetime import datetime
-from sqlalchemy import Column, Date, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, Date, DateTime, Integer, String
 
 
 class Users_profiles(Base):
@@ -13,6 +13,12 @@ class Users_profiles(Base):
     full_name = Column(String, nullable=True)
     clinic_name = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    # Email login: doctors log in with email+password; patients log in with an
+    # emailed one-time code. Nullable so patients registered without an email
+    # (no account) and pre-existing rows keep working. Auto-added on startup by
+    # the table-repair step in core/database.py.
+    email = Column(String, nullable=True)
+    email_verified = Column(Boolean, nullable=True)
     birth_date = Column(Date, nullable=True)
     gender = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), default=datetime.now)

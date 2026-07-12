@@ -2,7 +2,6 @@ import { useState, useEffect, useRef } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Users,
-  Copy,
   FileText,
   ChevronRight,
   Loader2,
@@ -26,6 +25,7 @@ interface Patient {
   phone: string | null;
   birth_date: string | null;
   gender: string | null;
+  email: string | null;
 }
 
 interface Report {
@@ -62,8 +62,7 @@ export default function DoctorDashboard() {
   const [newPatientFirstName, setNewPatientFirstName] = useState("");
   const [newPatientGender, setNewPatientGender] = useState<string>("");
   const [newPatientBirthDate, setNewPatientBirthDate] = useState<string>("");
-  const [newPatientLogin, setNewPatientLogin] = useState<string | null>(null);
-  const [newPatientPassword, setNewPatientPassword] = useState<string | null>(null);
+  const [newPatientEmail, setNewPatientEmail] = useState<string>("");
   const [registeringPatient, setRegisteringPatient] = useState(false);
   const [deletingPatient, setDeletingPatient] = useState(false);
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
@@ -98,33 +97,6 @@ export default function DoctorDashboard() {
       navigate("/");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const copyToClipboard = async (text: string): Promise<boolean> => {
-    if (navigator.clipboard && window.isSecureContext) {
-      try {
-        await navigator.clipboard.writeText(text);
-        return true;
-      } catch {
-        // fall through
-      }
-    }
-    try {
-      const textarea = document.createElement("textarea");
-      textarea.value = text;
-      textarea.style.position = "fixed";
-      textarea.style.left = "-9999px";
-      textarea.style.top = "-9999px";
-      textarea.style.opacity = "0";
-      document.body.appendChild(textarea);
-      textarea.focus();
-      textarea.select();
-      const success = document.execCommand("copy");
-      document.body.removeChild(textarea);
-      return success;
-    } catch {
-      return false;
     }
   };
 
@@ -248,7 +220,11 @@ export default function DoctorDashboard() {
         state: {
           analysisResult: result,
           imageDataUri,
-          assignedPatient: { id: selectedPatient.patient_id, name: selectedPatient.full_name },
+          assignedPatient: {
+            id: selectedPatient.patient_id,
+            name: selectedPatient.full_name,
+            email: selectedPatient.email,
+          },
         },
       });
     } catch (err: unknown) {
@@ -262,29 +238,12 @@ export default function DoctorDashboard() {
     }
   };
 
-  const generatePatientLogin = () => {
-    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let login = "patient_";
-    for (let i = 0; i < 6; i++) {
-      login += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    setNewPatientLogin(login);
-    const pwChars = "abcdefghijklmnopqrstuvwxyz0123456789";
-    let password = "";
-    for (let i = 0; i < 8; i++) {
-      password += pwChars.charAt(Math.floor(Math.random() * pwChars.length));
-    }
-    setNewPatientPassword(password);
-  };
-
   const openRegisterModal = () => {
     setNewPatientSurname("");
     setNewPatientFirstName("");
     setNewPatientGender("");
     setNewPatientBirthDate("");
-    setNewPatientLogin(null);
-    setNewPatientPassword(null);
-    generatePatientLogin();
+    setNewPatientEmail("");
     setShowRegisterModal(true);
   };
 
@@ -299,8 +258,9 @@ export default function DoctorDashboard() {
       toast({ title: t("error"), description: t("birth_date_required"), variant: "destructive" });
       return;
     }
-    if (!newPatientLogin) {
-      toast({ title: t("error"), description: t("login_not_created"), variant: "destructive" });
+    const emailTrimmed = newPatientEmail.trim();
+    if (emailTrimmed && !emailTrimmed.includes("@")) {
+      toast({ title: t("error"), description: t("enter_email"), variant: "destructive" });
       return;
     }
     const fullName = [newPatientSurname.trim(), newPatientFirstName.trim()].filter(Boolean).join(" ");
@@ -311,8 +271,7 @@ export default function DoctorDashboard() {
         method: "POST",
         data: {
           full_name: fullName,
-          login: newPatientLogin,
-          password: newPatientPassword || "changeme",
+          email: emailTrimmed || null,
           birth_date: newPatientBirthDate || null,
           gender: newPatientGender || null,
         },
@@ -323,12 +282,13 @@ export default function DoctorDashboard() {
         phone: null,
         birth_date: newPatientBirthDate || null,
         gender: newPatientGender || null,
+        email: emailTrimmed || null,
       };
       setPatients((prev) => [...prev, newPatient]);
       setShowRegisterModal(false);
       toast({
         title: t("patient_registered"),
-        description: `${newPatient.full_name} — ${t("login_label")}: ${newPatientLogin}`,
+        description: newPatient.full_name || "",
       });
     } catch (err: unknown) {
       const error = err as Record<string, unknown>;
@@ -683,33 +643,20 @@ export default function DoctorDashboard() {
               </div>
 
               <div>
-                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">{t("login_password")}</label>
-                <div className="space-y-2">
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-lg px-3 py-2.5">
-                      <span className="text-xs text-gray-500 dark:text-gray-400">{t("login_label")}: </span>
-                      <span className="text-sm font-mono font-bold text-purple-700 dark:text-purple-300">{newPatientLogin || "—"}</span>
-                    </div>
-                    <Button onClick={async () => { if (newPatientLogin) { const success = await copyToClipboard(newPatientLogin); if (success) toast({ title: t("copied"), description: t("login_copied") }); } }} variant="outline" size="sm" className="shrink-0 h-10">
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <div className="flex-1 bg-purple-50 dark:bg-purple-900/30 border border-purple-200 dark:border-purple-700 rounded-lg px-3 py-2.5">
-                      <span className="text-xs text-gray-500 dark:text-gray-400">{t("password_label")}: </span>
-                      <span className="text-sm font-mono font-bold text-purple-700 dark:text-purple-300">{newPatientPassword || "—"}</span>
-                    </div>
-                    <Button onClick={async () => { if (newPatientPassword) { const success = await copyToClipboard(newPatientPassword); if (success) toast({ title: t("copied"), description: t("password_copied") }); } }} variant="outline" size="sm" className="shrink-0 h-10">
-                      <Copy className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                  <p className="text-xs text-gray-400 dark:text-gray-500">{t("tell_patient_credentials")}</p>
-                </div>
+                <label className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-1.5 block">{t("patient_email_optional")}</label>
+                <input
+                  type="email"
+                  value={newPatientEmail}
+                  onChange={(e) => setNewPatientEmail(e.target.value)}
+                  placeholder={t("email_placeholder")}
+                  className="w-full border border-gray-200 dark:border-gray-600 bg-white dark:bg-gray-700 rounded-lg px-3 py-2.5 text-sm text-gray-900 dark:text-white focus:outline-none focus:border-purple-400 focus:ring-1 focus:ring-purple-200"
+                />
+                <p className="text-xs text-gray-400 dark:text-gray-500 mt-1.5">{t("patient_email_hint")}</p>
               </div>
             </div>
 
             <div className="px-5 py-4 border-t border-gray-100 dark:border-gray-700 flex gap-2">
-              <Button onClick={registerNewPatient} disabled={registeringPatient || !newPatientSurname.trim() || !newPatientLogin} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2.5">
+              <Button onClick={registerNewPatient} disabled={registeringPatient || !newPatientSurname.trim()} className="flex-1 bg-purple-600 hover:bg-purple-700 text-white py-2.5">
                 {registeringPatient ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <UserPlus className="mr-2 h-4 w-4" />}
                 {t("register")}
               </Button>

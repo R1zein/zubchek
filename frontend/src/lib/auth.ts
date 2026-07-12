@@ -74,104 +74,98 @@ export async function authApiCall(params: {
   });
 }
 
-export async function customLogin(params: {
-  role: string;
-  full_name?: string;
-  login?: string;
-  password: string;
-}): Promise<UserSession> {
-  let res: any;
+/**
+ * Result of an auth step: either the account still needs an emailed code
+ * (needsVerification), or a session was established.
+ */
+export interface AuthResult {
+  needsVerification: boolean;
+  email?: string;
+  session?: UserSession;
+}
+
+/** POST to a custom-auth endpoint, returning the response body or throwing the
+ *  server's error detail as an Error. */
+async function postAuth(url: string, data: Record<string, unknown>): Promise<any> {
   try {
-    res = await client.apiCall.invoke({
-      url: "/api/v1/custom-auth/login",
-      method: "POST",
-      data: params,
-    });
+    const res = await client.apiCall.invoke({ url, method: "POST", data });
+    const body = res?.data ?? res;
+    if (body?.detail && body?.success !== true) {
+      throw new Error(body.detail);
+    }
+    return body;
   } catch (apiErr: any) {
-    // Handle HTTP error responses (e.g., 428 for needs_password_setup)
+    if (apiErr instanceof Error && apiErr.message && !(apiErr as any).data && !(apiErr as any).response) {
+      throw apiErr;
+    }
     const detail =
       apiErr?.data?.detail ||
       apiErr?.response?.data?.detail ||
       apiErr?.message ||
-      "";
-    if (detail === "needs_password_setup") {
-      const err = new Error("needs_password_setup");
-      (err as any).code = "needs_password_setup";
-      throw err;
-    }
-    throw new Error(detail || "Ошибка входа");
+      "Ошибка";
+    throw new Error(detail);
   }
-
-  // Also check response body for non-success or needs_password_setup
-  const detail = res?.data?.detail || "";
-  if (detail === "needs_password_setup") {
-    const err = new Error("needs_password_setup");
-    (err as any).code = "needs_password_setup";
-    throw err;
-  }
-
-  if (!res?.data?.success) {
-    throw new Error(detail || "Ошибка входа");
-  }
-
-  const session: UserSession = {
-    user_id: res.data.user_id,
-    role: res.data.role,
-    full_name: res.data.full_name,
-    birth_date: res.data.birth_date || null,
-  };
-  setSession(session);
-  return session;
 }
 
-export async function setPatientPassword(params: {
-  login: string;
-  new_password: string;
-}): Promise<UserSession> {
-  const res = await client.apiCall.invoke({
-    url: "/api/v1/custom-auth/set-password",
-    method: "POST",
-    data: params,
-  });
-
-  if (!res?.data?.success) {
-    throw new Error(res?.data?.detail || "Ошибка установки пароля");
+/** Turn a backend AuthResponse body into an AuthResult, storing the session. */
+function toAuthResult(body: any): AuthResult {
+  if (body?.needs_verification) {
+    return { needsVerification: true, email: body.email };
   }
-
   const session: UserSession = {
-    user_id: res.data.user_id,
-    role: res.data.role,
-    full_name: res.data.full_name,
-    birth_date: res.data.birth_date || null,
+    user_id: body.user_id,
+    role: body.role,
+    full_name: body.full_name,
+    birth_date: body.birth_date || null,
   };
   setSession(session);
-  return session;
+  return { needsVerification: false, session };
 }
 
-export async function customRegister(params: {
-  role: string;
+// ---- Doctor: register + login + email verification (#3) ----
+
+export async function registerDoctor(params: {
   full_name: string;
+  email: string;
   password: string;
-  clinic_password?: string;
-  patient_login?: string;
+  clinic_password: string;
+}): Promise<AuthResult> {
+  const body = await postAuth("/api/v1/custom-auth/register", { role: "doctor", ...params });
+  return toAuthResult(body);
+}
+
+export async function loginDoctor(params: {
+  email: string;
+  password: string;
+}): Promise<AuthResult> {
+  const body = await postAuth("/api/v1/custom-auth/login", { role: "doctor", ...params });
+  return toAuthResult(body);
+}
+
+export async function verifyDoctorEmail(params: {
+  email: string;
+  code: string;
 }): Promise<UserSession> {
-  const res = await client.apiCall.invoke({
-    url: "/api/v1/custom-auth/register",
-    method: "POST",
-    data: params,
-  });
+  const body = await postAuth("/api/v1/custom-auth/verify-email", params);
+  const result = toAuthResult(body);
+  if (!result.session) throw new Error("Ошибка подтверждения");
+  return result.session;
+}
 
-  if (!res?.data?.success) {
-    throw new Error(res?.data?.detail || "Ошибка регистрации");
-  }
+// ---- Patient: login via emailed code (#4) ----
 
-  const session: UserSession = {
-    user_id: res.data.user_id,
-    role: res.data.role,
-    full_name: res.data.full_name,
-  };
-  setSession(session);
-  return session;
+export async function requestPatientCode(email: string): Promise<void> {
+  await postAuth("/api/v1/custom-auth/patient/request-code", { email });
+}
+
+export async function verifyPatientCode(params: {
+  email: string;
+  code: string;
+}): Promise<UserSession> {
+  const body = await postAuth("/api/v1/custom-auth/patient/verify-code", params);
+  const result = toAuthResult(body);
+  if (!result.session) throw new Error("Ошибка входа");
+  return result.session;
 }
 
 export function logout(): void {

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import secrets
 import string
@@ -10,6 +11,7 @@ from sqlalchemy import text
 from core.database import get_db
 from dependencies.custom_auth import get_current_user_custom as get_current_user
 from schemas.auth import UserResponse
+from services.email_service import send_report_email
 
 logger = logging.getLogger(__name__)
 
@@ -147,7 +149,7 @@ async def get_my_patients(
     """Get list of patients for the current doctor."""
     result = await db.execute(
         text("""
-            SELECT dp.patient_id, up.full_name, up.phone, up.birth_date, up.gender
+            SELECT dp.patient_id, up.full_name, up.phone, up.birth_date, up.gender, up.email
             FROM doctor_patients dp
             LEFT JOIN users_profiles up ON dp.patient_id = up.user_id
             WHERE dp.user_id = :doctor_id AND dp.status = 'active'
@@ -162,6 +164,7 @@ async def get_my_patients(
             "phone": row[2],
             "birth_date": str(row[3]) if row[3] else None,
             "gender": row[4],
+            "email": row[5],
         }
         for row in rows
     ]
@@ -247,17 +250,15 @@ async def delete_patient_report(
 
 class RegisterPatientRequest(BaseModel):
     full_name: str
-    login: str
-    password: str
     birth_date: str
+    email: Optional[str] = None  # optional — without it the patient has no login
     gender: Optional[str] = None
 
 
 class RegisterPatientResponse(BaseModel):
     patient_id: str
     full_name: str
-    login: str
-    password: str
+    email: Optional[str] = None
 
 
 @router.post("/register-patient", response_model=RegisterPatientResponse)
@@ -266,7 +267,11 @@ async def register_patient(
     current_user: UserResponse = Depends(get_current_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Doctor registers a new patient directly (creates profile and links them)."""
+    """Doctor registers a new patient directly (creates profile and links them).
+
+    Email is optional: if provided, the patient can log in with an emailed code
+    and receive reports by email; if omitted, the patient has no account.
+    """
     import uuid
 
     # Verify user is a doctor
@@ -278,13 +283,18 @@ async def register_patient(
     if not row or row[0] != "doctor":
         raise HTTPException(status_code=403, detail="Только врачи могут регистрировать пациентов")
 
-    # Check if patient login already exists
-    existing = await db.execute(
-        text("SELECT user_id FROM users_profiles WHERE role = 'patient' AND LOWER(TRIM(clinic_name)) = LOWER(TRIM(:login))"),
-        {"login": data.login},
-    )
-    if existing.fetchone():
-        raise HTTPException(status_code=409, detail="Пациент с таким логином уже существует")
+    email = (data.email or "").strip().lower() or None
+    if email and "@" not in email:
+        raise HTTPException(status_code=422, detail="Введите корректную почту пациента")
+
+    # If an email is given, it must be unique among patients (used as login).
+    if email:
+        existing = await db.execute(
+            text("SELECT user_id FROM users_profiles WHERE role = 'patient' AND LOWER(TRIM(email)) = :email"),
+            {"email": email},
+        )
+        if existing.fetchone():
+            raise HTTPException(status_code=409, detail="Пациент с такой почтой уже существует")
 
     # Validate birth_date is provided and valid
     if not data.birth_date or not data.birth_date.strip():
@@ -295,7 +305,6 @@ async def register_patient(
 
     # Parse birth_date string to date object
     from datetime import date as date_type
-    parsed_birth_date = None
     try:
         parts = data.birth_date.split("-")
         parsed_birth_date = date_type(int(parts[0]), int(parts[1]), int(parts[2]))
@@ -303,44 +312,27 @@ async def register_patient(
         raise HTTPException(status_code=422, detail="Неверный формат даты рождения")
 
     try:
-        # Create a patient profile with clinic_name=login, phone=password, birth_date, gender
-        if parsed_birth_date:
-            await db.execute(
-                text("""
-                    INSERT INTO users_profiles (user_id, role, full_name, clinic_name, phone, birth_date, gender)
-                    VALUES (:user_id, 'patient', :full_name, :login, :password, :birth_date, :gender)
-                """),
-                {
-                    "user_id": patient_id,
-                    "full_name": data.full_name,
-                    "login": data.login,
-                    "password": data.password,
-                    "birth_date": parsed_birth_date,
-                    "gender": data.gender,
-                },
-            )
-        else:
-            await db.execute(
-                text("""
-                    INSERT INTO users_profiles (user_id, role, full_name, clinic_name, phone, gender)
-                    VALUES (:user_id, 'patient', :full_name, :login, :password, :gender)
-                """),
-                {
-                    "user_id": patient_id,
-                    "full_name": data.full_name,
-                    "login": data.login,
-                    "password": data.password,
-                    "gender": data.gender,
-                },
-            )
+        await db.execute(
+            text("""
+                INSERT INTO users_profiles (user_id, role, full_name, email, birth_date, gender)
+                VALUES (:user_id, 'patient', :full_name, :email, :birth_date, :gender)
+            """),
+            {
+                "user_id": patient_id,
+                "full_name": data.full_name,
+                "email": email,
+                "birth_date": parsed_birth_date,
+                "gender": data.gender,
+            },
+        )
 
         # Link patient to doctor
         await db.execute(
             text("""
                 INSERT INTO doctor_patients (user_id, patient_id, status, invite_code)
-                VALUES (:doctor_id, :patient_id, 'active', :login)
+                VALUES (:doctor_id, :patient_id, 'active', :email)
             """),
-            {"doctor_id": str(current_user.id), "patient_id": patient_id, "login": data.login},
+            {"doctor_id": str(current_user.id), "patient_id": patient_id, "email": email},
         )
         await db.commit()
     except Exception as e:
@@ -351,8 +343,7 @@ async def register_patient(
     return RegisterPatientResponse(
         patient_id=patient_id,
         full_name=data.full_name,
-        login=data.login,
-        password=data.password,
+        email=email,
     )
 
 
@@ -514,3 +505,78 @@ async def get_my_doctor(
     if not row:
         return {"doctor": None}
     return {"doctor": {"id": row[0], "full_name": row[1], "clinic_name": row[2]}}
+
+
+async def _resolve_report_patient(db: AsyncSession, doctor_id: str, report_id: int):
+    """Return (patient_id, full_name, email) for a report the doctor may access.
+
+    Raises 404/403 if the report is missing or not linked to this doctor.
+    """
+    report_row = await db.execute(
+        text("SELECT user_id FROM reports WHERE id = :report_id"),
+        {"report_id": report_id},
+    )
+    report = report_row.fetchone()
+    if not report:
+        raise HTTPException(status_code=404, detail="Отчёт не найден")
+    patient_id = report[0]
+
+    link = await db.execute(
+        text("SELECT id FROM doctor_patients WHERE user_id = :doctor_id AND patient_id = :patient_id AND status = 'active'"),
+        {"doctor_id": doctor_id, "patient_id": patient_id},
+    )
+    if not link.fetchone():
+        raise HTTPException(status_code=403, detail="У вас нет доступа к этому отчёту")
+
+    prof = await db.execute(
+        text("SELECT full_name, email FROM users_profiles WHERE user_id = :patient_id"),
+        {"patient_id": patient_id},
+    )
+    p = prof.fetchone()
+    full_name = p[0] if p else None
+    email = p[1] if p else None
+    return patient_id, full_name, email
+
+
+@router.get("/report-recipient/{report_id}")
+async def get_report_recipient(
+    report_id: int,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Whether a report's patient can be emailed (drives the 'Send to patient'
+    button visibility). Returns the email masked-free only as a has-email flag."""
+    _, full_name, email = await _resolve_report_patient(db, str(current_user.id), report_id)
+    return {"has_email": bool(email), "email": email, "full_name": full_name}
+
+
+class SendReportEmailRequest(BaseModel):
+    report_id: int
+    pdf_base64: str
+    filename: Optional[str] = None
+
+
+@router.post("/send-report-email")
+async def send_report_email_endpoint(
+    data: SendReportEmailRequest,
+    current_user: UserResponse = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Email the (client-generated) report PDF to the patient's email."""
+    _, full_name, email = await _resolve_report_patient(db, str(current_user.id), data.report_id)
+    if not email:
+        raise HTTPException(status_code=400, detail="У пациента не указана почта")
+
+    # Accept a bare base64 string or a full data: URI.
+    pdf_b64 = data.pdf_base64 or ""
+    if "," in pdf_b64 and pdf_b64.strip().startswith("data:"):
+        pdf_b64 = pdf_b64.split(",", 1)[1]
+    if not pdf_b64:
+        raise HTTPException(status_code=400, detail="Пустой файл отчёта")
+
+    filename = data.filename or "zubchek-report.pdf"
+    sent = await asyncio.to_thread(send_report_email, email, full_name or "", pdf_b64, filename)
+    if not sent:
+        raise HTTPException(status_code=502, detail="Не удалось отправить письмо. Попробуйте позже.")
+
+    return {"success": True, "message": "Отчёт отправлен на почту пациента"}

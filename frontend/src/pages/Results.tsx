@@ -1,9 +1,10 @@
 import { useRef, useState, useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
-import { AlertTriangle, Download, FileText, Image as ImageIcon } from "lucide-react";
+import { AlertTriangle, Download, FileText, Image as ImageIcon, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getSession, client } from "@/lib/auth";
+import { useToast } from "@/hooks/use-toast";
 import AppHeader from "@/components/AppHeader";
 import { useLanguage } from "@/contexts/LanguageContext";
 
@@ -59,11 +60,13 @@ export default function Results() {
   const page1Ref = useRef<HTMLDivElement>(null);
   const page2Ref = useRef<HTMLDivElement>(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const [sending, setSending] = useState(false);
   const { t, lang } = useLanguage();
+  const { toast } = useToast();
   const { analysisResult, imageDataUri, assignedPatient } = (location.state as {
     analysisResult: AnalysisResult;
     imageDataUri: string;
-    assignedPatient?: { id: string; name: string } | null;
+    assignedPatient?: { id: string; name: string; email?: string | null } | null;
   }) || {};
 
   useEffect(() => {
@@ -131,11 +134,10 @@ export default function Results() {
     link.click();
   };
 
-  // PDF: exactly two A4 pages — page 1 = index + per-tooth, page 2 = recommendations.
-  // Each section is scaled to fit within its page.
-  const handlePdf = async () => {
-    setDownloadOpen(false);
-    if (!page1Ref.current) return;
+  // Build the report as exactly two A4 pages — page 1 = index + per-tooth,
+  // page 2 = recommendations. Each section is scaled to fit within its page.
+  // Returned so it can be either saved (download) or emailed (send to patient).
+  const buildPdf = async () => {
     const { jsPDF } = await import("jspdf");
     const pdf = new jsPDF({ unit: "mm", format: "a4" });
     const pageW = pdf.internal.pageSize.getWidth();
@@ -157,9 +159,44 @@ export default function Results() {
       pdf.addImage(canvas.toDataURL("image/png"), "PNG", x, margin, w, h);
     };
 
-    await addSection(page1Ref.current, true);
+    if (page1Ref.current) await addSection(page1Ref.current, true);
     if (page2Ref.current) await addSection(page2Ref.current, false);
+    return pdf;
+  };
+
+  const handlePdf = async () => {
+    setDownloadOpen(false);
+    if (!page1Ref.current) return;
+    const pdf = await buildPdf();
     pdf.save(`zubchek-report-${fileStamp()}.pdf`);
+  };
+
+  // Email the report PDF to the assigned patient (only shown when they have an email).
+  const handleSendToPatient = async () => {
+    const session = getSession();
+    if (!session || session.role !== "doctor" || !assignedPatient?.email || !analysisResult?.report_id) return;
+    setSending(true);
+    try {
+      const pdf = await buildPdf();
+      const dataUri = pdf.output("datauristring"); // data:application/pdf;base64,...
+      await client.apiCall.invoke({
+        url: `/api/v1/invite/send-report-email?current_user_id=${encodeURIComponent(session.user_id)}`,
+        method: "POST",
+        data: {
+          report_id: analysisResult.report_id,
+          pdf_base64: dataUri,
+          filename: `zubchek-report-${fileStamp()}.pdf`,
+        },
+      });
+      toast({ title: t("report_sent") });
+    } catch (err: unknown) {
+      const error = err as Record<string, unknown>;
+      const data = error?.data as Record<string, unknown> | undefined;
+      const detail = (data?.detail as string) || (error?.message as string) || t("report_send_error");
+      toast({ title: t("error"), description: detail, variant: "destructive" });
+    } finally {
+      setSending(false);
+    }
   };
 
   if (!analysisResult) {
@@ -365,6 +402,17 @@ export default function Results() {
             <Download className="mr-2 h-5 w-5" />
             {t("download_report")}
           </Button>
+          {assignedPatient?.email && (
+            <Button
+              onClick={handleSendToPatient}
+              disabled={sending}
+              variant="outline"
+              className="w-full py-5 sm:py-6 text-base sm:text-lg rounded-xl border-purple-300 dark:border-purple-700 text-purple-700 dark:text-purple-300 hover:bg-purple-50 dark:hover:bg-purple-900/30"
+            >
+              {sending ? <Loader2 className="mr-2 h-5 w-5 animate-spin" /> : <Send className="mr-2 h-5 w-5" />}
+              {sending ? t("sending") : t("send_to_patient")}
+            </Button>
+          )}
           <Button
             onClick={() => navigate("/")}
             variant="outline"
