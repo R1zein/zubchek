@@ -51,6 +51,10 @@ def _post(payload: dict) -> bool:
         headers={
             "Authorization": f"Bearer {api_key}",
             "Content-Type": "application/json",
+            # Resend's API sits behind Cloudflare, which blocks the default
+            # "Python-urllib/x" agent with a 1010 signature ban. A normal UA
+            # avoids the block (same fix we needed for R2 public URLs).
+            "User-Agent": "Mozilla/5.0 (compatible; Zubchek/1.0; +https://zubchek.com)",
         },
     )
     try:
