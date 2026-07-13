@@ -172,8 +172,9 @@ def compute_tooth_z_index(tooth_colors: dict) -> dict:
         blue = round(blue * factor)
         light_blue = 100 - white - purple - blue
     
-    # Calculate points (max 300 per tooth)
-    total_points = white * 0 + purple * 1 + blue * 2 + light_blue * 3
+    # Calculate points (max 300 per tooth). Fresh plaque counts strongly so the
+    # index reflects actual coverage, not just plaque age.
+    total_points = white * 0 + purple * 2 + blue * 2.5 + light_blue * 3
     total_points = min(total_points, 300)
     
     # Pollution percentage for this tooth
@@ -195,10 +196,10 @@ def compute_z_index(color_percentages: dict) -> dict:
     
     Formula:
     - White (clean): 0 points per %
-    - Purple (fresh plaque): 1 point per %
-    - Blue (medium plaque): 2 points per %
+    - Purple (fresh plaque): 2 points per %
+    - Blue (medium plaque): 2.5 points per %
     - Light blue/cyan (old plaque): 3 points per %
-    
+
     Total points max = 300 (if 100% light_blue)
     Pollution % = total_points / 300 * 100
     Cleanliness % = 100 - pollution %
@@ -224,8 +225,8 @@ def compute_z_index(color_percentages: dict) -> dict:
     
     # Calculate points
     points_white = white * 0
-    points_purple = purple * 1
-    points_blue = blue * 2
+    points_purple = purple * 2
+    points_blue = blue * 2.5
     points_light_blue = light_blue * 3
     
     total_points = points_white + points_purple + points_blue + points_light_blue
