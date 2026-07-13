@@ -1,6 +1,7 @@
 import asyncio
 import json
 import logging
+import os
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
 from pydantic import BaseModel
 from typing import Optional
@@ -15,6 +16,14 @@ from schemas.auth import UserResponse
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/v1/analysis", tags=["analysis"])
+
+# Cap concurrent heavy photo analyses so peak RAM stays bounded on small
+# servers: the pixel decode (numpy/Pillow) plus the Claude vision call are the
+# memory-hungry part. Requests over the limit wait here instead of all spiking
+# memory at once — the frontend keeps showing its "analyzing" spinner while a
+# request is queued. Raise ANALYSIS_CONCURRENCY once the box has more RAM.
+_ANALYSIS_CONCURRENCY = max(1, int(os.getenv("ANALYSIS_CONCURRENCY", "2")))
+_analysis_sem = asyncio.Semaphore(_ANALYSIS_CONCURRENCY)
 
 
 class AnalyzeRequest(BaseModel):
@@ -82,51 +91,55 @@ async def analyze_photo(
         if not data.image:
             raise HTTPException(status_code=400, detail="Фото не предоставлено")
 
-        # 1. Deterministic pixel color analysis
-        try:
-            px = analyze_teeth_pixels(data.image, debug=False)
-        except Exception as e:
-            logger.error(f"Pixel analysis error: {e}")
-            raise HTTPException(status_code=500, detail="Ошибка анализа. Попробуйте ещё раз.")
+        # Serialize the heavy work (pixel decode + Claude call) so concurrent
+        # uploads queue here instead of all spiking RAM at once. Early
+        # validation returns and errors still release the slot via `async with`.
+        async with _analysis_sem:
+            # 1. Deterministic pixel color analysis
+            try:
+                px = analyze_teeth_pixels(data.image, debug=False)
+            except Exception as e:
+                logger.error(f"Pixel analysis error: {e}")
+                raise HTTPException(status_code=500, detail="Ошибка анализа. Попробуйте ещё раз.")
 
-        # 2. Lenient validation (no LLM)
-        if px.get("tooth_coverage_percent", 0) < 6:
-            return AnalyzeResponse(
-                has_teeth=False, error="no_teeth",
-                message="На фото не обнаружены зубы. Пожалуйста, сделайте другое фото.",
+            # 2. Lenient validation (no LLM)
+            if px.get("tooth_coverage_percent", 0) < 6:
+                return AnalyzeResponse(
+                    has_teeth=False, error="no_teeth",
+                    message="На фото не обнаружены зубы. Пожалуйста, сделайте другое фото.",
+                )
+            if px.get("stained_area_percent", 0) < 4:
+                return AnalyzeResponse(
+                    has_teeth=False, error="no_dye_detected",
+                    message="Краситель не обнаружен. Пожалуйста, нанесите специальный краситель-индикатор налёта на зубы и сделайте новое фото.",
+                )
+
+            # 3. Severity-weighted Z-Index from pixel percentages
+            z = compute_z_index(px["overall_color_percentages"])
+
+            # 4. One Claude vision call: orthodontic detection + tailored recommendations
+            rec = await detect_ortho_and_recommend(
+                data.image, z["pollution_percentage"], z["risk_level"], z["color_percentages"]
             )
-        if px.get("stained_area_percent", 0) < 4:
-            return AnalyzeResponse(
-                has_teeth=False, error="no_dye_detected",
-                message="Краситель не обнаружен. Пожалуйста, нанесите специальный краситель-индикатор налёта на зубы и сделайте новое фото.",
-            )
+            recommendations = rec["recommendations"]
 
-        # 3. Severity-weighted Z-Index from pixel percentages
-        z = compute_z_index(px["overall_color_percentages"])
-
-        # 4. One Claude vision call: orthodontic detection + tailored recommendations
-        rec = await detect_ortho_and_recommend(
-            data.image, z["pollution_percentage"], z["risk_level"], z["color_percentages"]
-        )
-        recommendations = rec["recommendations"]
-
-        result = {
-            "color_percentages": z["color_percentages"],
-            "points_breakdown": z["points_breakdown"],
-            "total_points": z["total_points"],
-            "max_points": z["max_points"],
-            "pollution_percentage": z["pollution_percentage"],
-            "cleanliness_percentage": z["cleanliness_percentage"],
-            "risk_level": z["risk_level"],
-            "hygiene_level": z["hygiene_level"],
-            "recommendations": recommendations,
-            "orthodontic_detected": rec["orthodontic_detected"],
-            "orthodontic_type": rec["orthodontic_type"],
-            "teeth": px.get("teeth"),
-            "tooth_coverage_percent": px.get("tooth_coverage_percent"),
-            "stained_area_percent": px.get("stained_area_percent"),
-            "method": px.get("method"),
-        }
+            result = {
+                "color_percentages": z["color_percentages"],
+                "points_breakdown": z["points_breakdown"],
+                "total_points": z["total_points"],
+                "max_points": z["max_points"],
+                "pollution_percentage": z["pollution_percentage"],
+                "cleanliness_percentage": z["cleanliness_percentage"],
+                "risk_level": z["risk_level"],
+                "hygiene_level": z["hygiene_level"],
+                "recommendations": recommendations,
+                "orthodontic_detected": rec["orthodontic_detected"],
+                "orthodontic_type": rec["orthodontic_type"],
+                "teeth": px.get("teeth"),
+                "tooth_coverage_percent": px.get("tooth_coverage_percent"),
+                "stained_area_percent": px.get("stained_area_percent"),
+                "method": px.get("method"),
+            }
 
         # 5. Save report
         report_id = None
