@@ -119,14 +119,14 @@ def send_report_email(to: str, patient_name: str, pdf_base64: str, filename: str
     <div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1f2937">
       <h2 style="color:#7c3aed;margin:0 0 8px">Zubchek</h2>
       <p style="margin:0 0 12px;color:#4b5563">{greeting}</p>
-      <p style="margin:0 0 12px;color:#4b5563">Ваш врач отправил вам отчёт о гигиене полости рта. Он прикреплён к этому письму в формате PDF.</p>
-      <p style="margin:16px 0 0;color:#9ca3af;font-size:13px">zubchek.com • AI-анализ гигиены полости рта</p>
+      <p style="margin:0 0 12px;color:#4b5563">Ваш врач отправил вам отчёт о состоянии гигиены полости рта. Он прикреплён к этому письму в формате PDF.</p>
+      <p style="margin:16px 0 0;color:#9ca3af;font-size:13px">zubchek.com • AI-анализ состояния гигиены полости рта</p>
     </div>
     """
     return _post({
         "from": _from_address(),
         "to": [to],
-        "subject": "Zubchek — ваш отчёт о гигиене полости рта",
+        "subject": "Zubchek — ваш отчёт о состоянии гигиены полости рта",
         "html": html,
         "attachments": [{"filename": filename or "report.pdf", "content": pdf_base64}],
     })

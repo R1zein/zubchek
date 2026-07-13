@@ -1,7 +1,7 @@
 {
-  "name": "Zubchek — AI-анализ гигиены полости рта",
+  "name": "Zubchek — AI-анализ состояния гигиены полости рта",
   "short_name": "Zubchek",
-  "description": "Онлайн анализ гигиены полости рта с помощью AI",
+  "description": "Онлайн анализ состояния гигиены полости рта с помощью AI",
   "start_url": "/",
   "display": "standalone",
   "background_color": "#0f172a",

@@ -43,7 +43,7 @@ export default function Landing() {
       <section className="relative z-10 flex flex-col items-center text-center px-6 pt-12 pb-12 sm:pt-16 sm:pb-16">
         <div className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-purple-500/10 border border-purple-500/20 mb-8 backdrop-blur-sm">
           <Sparkles className="h-4 w-4 text-purple-400" />
-          <span className="text-sm text-purple-300">AI-анализ гигиены полости рта</span>
+          <span className="text-sm text-purple-300">AI-анализ состояния гигиены полости рта</span>
         </div>
         
         <h1 className="text-4xl sm:text-5xl lg:text-7xl font-bold leading-tight max-w-4xl">
@@ -87,7 +87,7 @@ export default function Landing() {
                 </span>
               </h2>
               <p className="text-gray-400 text-lg leading-relaxed mb-8">
-                Индекс Z — это комплексная оценка уровня гигиены полости рта. 
+                Индекс Z — это комплексная оценка состояния гигиены полости рта.
                 AI анализирует окрашенные зубы и определяет процент налёта на каждом зубе, 
                 учитывая возраст и свежесть отложений по цвету красителя.
               </p>
@@ -166,7 +166,7 @@ export default function Landing() {
               Возможности платформы
             </h2>
             <p className="mt-4 text-gray-400 max-w-xl mx-auto">
-              Всё необходимое для профессиональной оценки гигиены полости рта
+              Всё необходимое для профессиональной оценки состояния гигиены полости рта
             </p>
           </div>
 

@@ -160,7 +160,7 @@ export default function Index() {
 
             <div>
               <h2 className="text-xl sm:text-2xl font-semibold text-gray-800 mb-2">
-                Анализ гигиены полости рта
+                Анализ состояния гигиены полости рта
               </h2>
               <p className="text-sm sm:text-base text-gray-500">
                 Загрузите фото зубов, окрашенных индикатором налёта, для оценки

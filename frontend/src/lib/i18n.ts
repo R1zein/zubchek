@@ -13,7 +13,7 @@ export const translations = {
   "delete": { ru: "Удалить", en: "Delete" },
 
   // Index page
-  "welcome_title": { ru: "Анализ гигиены полости рта", en: "Oral Hygiene Analysis" },
+  "welcome_title": { ru: "Анализ состояния гигиены полости рта", en: "Oral Hygiene Analysis" },
   "welcome_subtitle": { ru: "Загрузите фото зубов, окрашенных индикатором налёта, и получите AI-оценку по методике PHP", en: "Upload a photo of teeth stained with plaque indicator and get an AI assessment using the PHP method" },
   "upload_photo": { ru: "Загрузить фото", en: "Upload Photo" },
   "take_photo": { ru: "Сделать фото", en: "Take Photo" },
@@ -152,7 +152,7 @@ export const translations = {
   "report_send_error": { ru: "Не удалось отправить отчёт", en: "Failed to send report" },
 
   // Footer
-  "branding_footer": { ru: "zubchek.com • AI-анализ гигиены полости рта", en: "zubchek.com • AI oral hygiene analysis" },
+  "branding_footer": { ru: "zubchek.com • AI-анализ состояния гигиены полости рта", en: "zubchek.com • AI oral hygiene analysis" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;
