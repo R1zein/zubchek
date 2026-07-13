@@ -38,7 +38,11 @@ DYE_S_MIN = 45         # min saturation for a pixel to count as colored dye
 # and split it by Value: bright => light_blue (old plaque), dark => blue (medium).
 BLUE_HUE_LO, BLUE_HUE_HI = 165, 255   # whole blue family (light + dark)
 LIGHT_BLUE_V_MIN = 220                # only very light/pale blue => light_blue/голубой (old)
-H_PURPLE_LO, H_PURPLE_HI = 255, 315   # purple / violet (freshest plaque)
+H_PURPLE_LO, H_PURPLE_HI = 255, 335   # purple / violet / magenta (freshest plaque)
+# Widened 315->335 to reclaim cervical (gum-line) plaque that reads magenta and
+# was being classified as gum. Going higher (>345) starts eating dye-stained gum
+# tissue — the disclosing dye colours plaque and gums alike, so cervical plaque
+# can't be fully separated from stained gingiva by hue alone.
 # Everything else with high saturation (red/pink gums, orange skin) = non-tooth.
 
 # Pixel labels
