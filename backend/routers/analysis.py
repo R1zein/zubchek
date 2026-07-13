@@ -102,17 +102,9 @@ async def analyze_photo(
                 logger.error(f"Pixel analysis error: {e}")
                 raise HTTPException(status_code=500, detail="Ошибка анализа. Попробуйте ещё раз.")
 
-            # 2. Lenient validation (no LLM)
-            if px.get("tooth_coverage_percent", 0) < 6:
-                return AnalyzeResponse(
-                    has_teeth=False, error="no_teeth",
-                    message="На фото не обнаружены зубы. Пожалуйста, сделайте другое фото.",
-                )
-            if px.get("stained_area_percent", 0) < 4:
-                return AnalyzeResponse(
-                    has_teeth=False, error="no_dye_detected",
-                    message="Краситель не обнаружен. Пожалуйста, нанесите специальный краситель-индикатор налёта на зубы и сделайте новое фото.",
-                )
+            # Validation moved to the vision model below — it checks teeth FIRST,
+            # then dye. The old pixel heuristics were unreliable and mis-ordered
+            # (a pink non-teeth photo passed; a plain one wrongly said "no dye").
 
             # 3. Severity-weighted Z-Index from pixel percentages
             z = compute_z_index(px["overall_color_percentages"])
@@ -127,7 +119,7 @@ async def analyze_photo(
             if not rec.get("is_teeth", True):
                 return AnalyzeResponse(
                     has_teeth=False, error="no_teeth",
-                    message="На фото не обнаружены зубы. Пожалуйста, сделайте другое фото.",
+                    message="На фото не обнаружены зубы. Пожалуйста, сфотографируйте зубы крупным планом.",
                 )
             if not rec.get("has_dye", True):
                 return AnalyzeResponse(
