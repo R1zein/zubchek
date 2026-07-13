@@ -152,7 +152,7 @@ export const translations = {
   "report_send_error": { ru: "Не удалось отправить отчёт", en: "Failed to send report" },
 
   // Footer
-  "branding_footer": { ru: "zubchek.me • AI-анализ гигиены полости рта", en: "zubchek.me • AI oral hygiene analysis" },
+  "branding_footer": { ru: "zubchek.com • AI-анализ гигиены полости рта", en: "zubchek.com • AI oral hygiene analysis" },
 } as const;
 
 export type TranslationKey = keyof typeof translations;

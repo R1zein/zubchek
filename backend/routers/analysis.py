@@ -117,10 +117,23 @@ async def analyze_photo(
             # 3. Severity-weighted Z-Index from pixel percentages
             z = compute_z_index(px["overall_color_percentages"])
 
-            # 4. One Claude vision call: orthodontic detection + tailored recommendations
+            # 4. One Claude vision call: validation + orthodontic detection + recommendations
             rec = await detect_ortho_and_recommend(
                 data.image, z["pollution_percentage"], z["risk_level"], z["color_percentages"]
             )
+
+            # Authoritative vision validation (second gate after the pixel pre-check):
+            # reject if the model says it isn't teeth or there's no disclosing dye.
+            if not rec.get("is_teeth", True):
+                return AnalyzeResponse(
+                    has_teeth=False, error="no_teeth",
+                    message="На фото не обнаружены зубы. Пожалуйста, сделайте другое фото.",
+                )
+            if not rec.get("has_dye", True):
+                return AnalyzeResponse(
+                    has_teeth=False, error="no_dye_detected",
+                    message="Краситель не обнаружен. Пожалуйста, нанесите специальный краситель-индикатор налёта на зубы и сделайте новое фото.",
+                )
             recommendations = rec["recommendations"]
 
             result = {

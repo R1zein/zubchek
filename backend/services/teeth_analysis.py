@@ -336,6 +336,13 @@ async def detect_ortho_and_recommend(
         f"Состав налёта: свежий {color_pct.get('purple', 0)}%, средний {color_pct.get('blue', 0)}%, "
         f"старый {color_pct.get('light_blue', 0)}%, чистая эмаль {color_pct.get('white', 0)}%.\n\n"
         "Задачи:\n"
+        "0. СНАЧАЛА проверь фото и установи два флага:\n"
+        "   - is_teeth: true, если на фото человеческие зубы. false — ТОЛЬКО если это явно НЕ зубы "
+        "(другой объект, либо снимок настолько размытый/тёмный, что зубов не разобрать).\n"
+        "   - has_dye: true, если на зубах есть ОКРАШИВАНИЕ индикатором налёта (розовые/красные/"
+        "фиолетовые/синие/голубые участки на эмали). false — ТОЛЬКО если окрашивания явно нет "
+        "(зубы обычного бело-жёлтого цвета, налёт индикатором не выявлен).\n"
+        "   Если is_teeth=false ИЛИ has_dye=false — верни пустой список recommendations и остальное не оценивай.\n"
         "1. ВНИМАТЕЛЬНО осмотри КАЖДЫЙ зуб на ортодонтические конструкции:\n"
         "   - брекеты (металлические/керамические замки, дуги, лигатуры);\n"
         "   - элайнеры (прозрачные капы поверх зубов);\n"
@@ -354,8 +361,8 @@ async def detect_ortho_and_recommend(
         "перед едой, правильное хранение для элайнеров; аккуратная чистка вокруг аттачментов "
         "без сколов).\n\n"
         "Ответь ТОЛЬКО валидным JSON:\n"
-        '{"orthodontic_detected": true/false, "orthodontic_type": "тип или null", '
-        '"recommendations": ["...", "..."]}'
+        '{"is_teeth": true/false, "has_dye": true/false, "orthodontic_detected": true/false, '
+        '"orthodontic_type": "тип или null", "recommendations": ["...", "..."]}'
     )
     try:
         service = AIHubService()
@@ -372,16 +379,24 @@ async def detect_ortho_and_recommend(
         )
         response = await service.gentxt(request)
         payload = json.loads(extract_json_block(response.content.strip()))
+        is_teeth = bool(payload.get("is_teeth", True))
+        has_dye = bool(payload.get("has_dye", True))
         recs = payload.get("recommendations") or []
-        if isinstance(recs, list) and recs:
-            return {
-                "orthodontic_detected": bool(payload.get("orthodontic_detected", False)),
-                "orthodontic_type": payload.get("orthodontic_type") or None,
-                "recommendations": [str(x) for x in recs][:8],
-            }
+        if not (isinstance(recs, list) and recs):
+            recs = _static_recommendations(risk_level)
+        return {
+            "is_teeth": is_teeth,
+            "has_dye": has_dye,
+            "orthodontic_detected": bool(payload.get("orthodontic_detected", False)),
+            "orthodontic_type": payload.get("orthodontic_type") or None,
+            "recommendations": [str(x) for x in recs][:8],
+        }
     except Exception as e:  # pragma: no cover - defensive
         logger.warning(f"ortho+recommend AI failed, using fallback: {e}")
+    # AI unavailable: don't block (the pixel pre-check already passed) — assume valid.
     return {
+        "is_teeth": True,
+        "has_dye": True,
         "orthodontic_detected": False,
         "orthodontic_type": None,
         "recommendations": _static_recommendations(risk_level),
