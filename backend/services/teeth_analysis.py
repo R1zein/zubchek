@@ -287,6 +287,22 @@ def _static_recommendations(risk_level: str) -> list:
     return base
 
 
+def _static_recommendations_en(risk_level: str) -> list:
+    """English fallback recommendations when the AI text service is unavailable."""
+    base = [
+        "Brush twice a day with a fluoride toothpaste for at least 2 minutes.",
+        "Clean between the teeth daily with floss or an oral irrigator.",
+    ]
+    if risk_level == "high":
+        base.append("See a dental hygienist for a professional cleaning.")
+        base.append("Pay special attention to the gum line and the inner surfaces of the teeth.")
+    elif risk_level == "medium":
+        base.append("Focus more on brushing technique in the areas where plaque builds up.")
+    else:
+        base.append("Excellent hygiene — keep it up.")
+    return base
+
+
 async def generate_recommendations(pollution_pct: int, risk_level: str, color_pct: dict) -> list:
     """Generate short Russian hygiene recommendations from the numeric result.
 
@@ -320,19 +336,19 @@ async def generate_recommendations(pollution_pct: int, risk_level: str, color_pc
 
 
 async def detect_ortho_and_recommend(
-    image_data_uri: str, pollution_pct: int, risk_level: str, color_pct: dict, lang: str = "ru"
+    image_data_uri: str, pollution_pct: int, risk_level: str, color_pct: dict
 ) -> dict:
     """One Claude vision call: detect orthodontic appliances in the photo AND
-    write hygiene recommendations tailored to them.
+    write hygiene recommendations tailored to them, in BOTH Russian and English.
 
     The numeric index comes from the pixel analyzer; this is the semantic vision
-    + text part. Returns {orthodontic_detected, orthodontic_type, recommendations}.
-    Falls back to static recommendations (no appliance) if the AI is unavailable.
+    + text part. Returns {is_teeth, has_dye, orthodontic_detected, orthodontic_type,
+    recommendations (ru), recommendations_en}. Falls back to static recommendations
+    if the AI is unavailable.
     """
-    lang_line = "Отвечай ТОЛЬКО на русском языке." if lang == "ru" else "Respond ONLY in English."
     prompt = (
         "Ты — стоматолог-гигиенист. Тебе прислали ФОТО для проверки. НЕ считай заранее, что на нём зубы — "
-        "сначала определи это сам.\n" + lang_line + "\n\n"
+        "сначала определи это сам.\n\n"
         "ШАГ 1. Определи по САМОМУ ИЗОБРАЖЕНИЮ два флага (числа в конце на этом шаге игнорируй — "
         "если на фото не зубы, они не имеют смысла). ВАЖЕН ПОРЯДОК: сначала зубы, потом краска.\n"
         "   - is_teeth: true ТОЛЬКО если на фото КРУПНЫМ ПЛАНОМ видны человеческие зубы (передние зубы, дёсны). "
@@ -362,10 +378,12 @@ async def detect_ortho_and_recommend(
         "языком, без сокращений. Если есть ортодонтическая конструкция — обязательно добавь "
         "подробный уход именно под неё (ёршики/суперфлосс/воск для брекетов; чистка кап, снятие "
         "перед едой, правильное хранение для элайнеров; аккуратная чистка вокруг аттачментов "
-        "без сколов).\n\n"
+        "без сколов). Верни ОДИН И ТОТ ЖЕ набор рекомендаций НА ДВУХ ЯЗЫКАХ, одинаковый по смыслу: "
+        "на русском (поле recommendations) и на английском (поле recommendations_en).\n\n"
         "Ответь ТОЛЬКО валидным JSON:\n"
         '{"is_teeth": true/false, "has_dye": true/false, "orthodontic_detected": true/false, '
-        '"orthodontic_type": "тип или null", "recommendations": ["...", "..."]}'
+        '"orthodontic_type": "тип или null", "recommendations": ["...", "..."], '
+        '"recommendations_en": ["...", "..."]}'
     )
     try:
         service = AIHubService()
@@ -378,21 +396,25 @@ async def detect_ortho_and_recommend(
                 {"type": "image_url", "image_url": {"url": compressed}},
             ])],
             model=get_ai_model(),
-            max_tokens=2000,
+            max_tokens=3000,
         )
         response = await service.gentxt(request)
         payload = json.loads(extract_json_block(response.content.strip()))
         is_teeth = bool(payload.get("is_teeth", True))
         has_dye = bool(payload.get("has_dye", True))
         recs = payload.get("recommendations") or []
+        recs_en = payload.get("recommendations_en") or []
         if not (isinstance(recs, list) and recs):
             recs = _static_recommendations(risk_level)
+        if not (isinstance(recs_en, list) and recs_en):
+            recs_en = _static_recommendations_en(risk_level)
         return {
             "is_teeth": is_teeth,
             "has_dye": has_dye,
             "orthodontic_detected": bool(payload.get("orthodontic_detected", False)),
             "orthodontic_type": payload.get("orthodontic_type") or None,
             "recommendations": [str(x) for x in recs][:8],
+            "recommendations_en": [str(x) for x in recs_en][:8],
         }
     except Exception as e:  # pragma: no cover - defensive
         logger.warning(f"ortho+recommend AI failed, using fallback: {e}")
@@ -403,6 +425,7 @@ async def detect_ortho_and_recommend(
         "orthodontic_detected": False,
         "orthodontic_type": None,
         "recommendations": _static_recommendations(risk_level),
+        "recommendations_en": _static_recommendations_en(risk_level),
     }
 
 

@@ -44,6 +44,7 @@ interface AnalysisResult {
   hygiene_level?: string;
   teeth?: Record<string, ToothResult>;
   recommendations?: string[];
+  recommendations_en?: string[];
   orthodontic_detected?: boolean;
   orthodontic_type?: string | null;
   report_id?: number;
@@ -373,20 +374,25 @@ export default function Results() {
           {/* PDF page 2 — recommendations only */}
           <div ref={page2Ref}>
           {/* Recommendations */}
-          {analysisResult.recommendations && analysisResult.recommendations.length > 0 && (
+          {(() => {
+            const recs = lang === "en" && analysisResult.recommendations_en?.length
+              ? analysisResult.recommendations_en
+              : analysisResult.recommendations;
+            return recs && recs.length > 0 ? (
             <div className="mb-4 sm:mb-6">
               <h4 className="text-base sm:text-lg font-medium text-gray-700 dark:text-gray-200 mb-2 sm:mb-3">
                 {t("recommendations")}
               </h4>
               <div className="space-y-2">
-                {analysisResult.recommendations.map((rec, idx) => (
+                {recs.map((rec, idx) => (
                   <div key={idx} className="p-2.5 sm:p-3 rounded-lg bg-purple-50 dark:bg-purple-900/30 border border-purple-100 dark:border-purple-800">
                     <p className="text-xs sm:text-sm text-purple-800 dark:text-purple-300">{rec}</p>
                   </div>
                 ))}
               </div>
             </div>
-          )}
+            ) : null;
+          })()}
 
           <div className="pt-3 mt-3 border-t border-gray-100 dark:border-gray-800 text-center">
             <span className="text-xs text-gray-400">{t("branding_footer")}</span>

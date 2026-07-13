@@ -43,6 +43,7 @@ class AnalyzeResponse(BaseModel):
     hygiene_level: Optional[str] = None
     teeth: Optional[dict] = None
     recommendations: Optional[list] = None
+    recommendations_en: Optional[list] = None
     orthodontic_detected: bool = False
     orthodontic_type: Optional[str] = None
     error: Optional[str] = None
@@ -138,6 +139,7 @@ async def analyze_photo(
                     message="Краситель не обнаружен. Пожалуйста, нанесите специальный краситель-индикатор налёта на зубы и сделайте новое фото.",
                 )
             recommendations = rec["recommendations"]
+            recommendations_en = rec.get("recommendations_en") or []
 
             result = {
                 "color_percentages": z["color_percentages"],
@@ -149,6 +151,7 @@ async def analyze_photo(
                 "risk_level": z["risk_level"],
                 "hygiene_level": z["hygiene_level"],
                 "recommendations": recommendations,
+                "recommendations_en": recommendations_en,
                 "orthodontic_detected": rec["orthodontic_detected"],
                 "orthodontic_type": rec["orthodontic_type"],
                 "teeth": px.get("teeth"),
@@ -201,6 +204,7 @@ async def analyze_photo(
             hygiene_level=result["hygiene_level"],
             teeth=result["teeth"],
             recommendations=recommendations,
+            recommendations_en=recommendations_en,
             orthodontic_detected=result["orthodontic_detected"],
             orthodontic_type=result["orthodontic_type"],
             report_id=report_id,

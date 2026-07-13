@@ -47,6 +47,7 @@ interface AnalysisData {
   hygiene_level?: string;
   teeth?: Record<string, ToothResult>;
   recommendations?: string[];
+  recommendations_en?: string[];
   // Legacy fields
   php_index?: number;
   plaque_percentage?: number;
@@ -277,7 +278,7 @@ export default function SharedReport() {
     cleanlinessStr = ad.cleanliness_percentage ?? (100 - pollutionPct);
     riskLevel = ad.risk_level || report.risk_level || "low";
     teeth = ad.teeth;
-    recommendations = ad.recommendations || report.recommendations;
+    recommendations = (lang === "en" && ad.recommendations_en?.length ? ad.recommendations_en : ad.recommendations) || report.recommendations;
   } else {
     pollutionPct = report.plaque_percentage ?? 0;
     cleanlinessStr = 100 - pollutionPct;
