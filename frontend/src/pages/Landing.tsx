@@ -52,7 +52,7 @@ export default function Landing() {
           </span>
           <br />
           <span className="bg-gradient-to-r from-purple-300 via-violet-400 to-purple-500 bg-clip-text text-transparent">
-            состояния гигиены зубов
+            состояния гигиены полости рта
           </span>
         </h1>
 
