@@ -172,13 +172,13 @@ def compute_tooth_z_index(tooth_colors: dict) -> dict:
         blue = round(blue * factor)
         light_blue = 100 - white - purple - blue
     
-    # Calculate points (max 300 per tooth). Fresh plaque counts strongly so the
-    # index reflects actual coverage, not just plaque age.
-    total_points = white * 0 + purple * 2 + blue * 2.5 + light_blue * 3
-    total_points = min(total_points, 300)
-    
+    # Calculate points (max 600 per tooth). Integer weights so total_points stays
+    # int; fresh plaque counts strongly so the index reflects coverage, not just age.
+    total_points = white * 0 + purple * 4 + blue * 5 + light_blue * 6
+    total_points = min(total_points, 600)
+
     # Pollution percentage for this tooth
-    pollution_pct = round(total_points / 300 * 100)
+    pollution_pct = round(total_points / 600 * 100)
     
     return {
         "white": white,
@@ -196,11 +196,11 @@ def compute_z_index(color_percentages: dict) -> dict:
     
     Formula:
     - White (clean): 0 points per %
-    - Purple (fresh plaque): 2 points per %
-    - Blue (medium plaque): 2.5 points per %
-    - Light blue/cyan (old plaque): 3 points per %
+    - Purple (fresh plaque): 4 points per %
+    - Blue (medium plaque): 5 points per %
+    - Light blue/cyan (old plaque): 6 points per %
 
-    Total points max = 300 (if 100% light_blue)
+    Total points max = 600 (if 100% light_blue)
     Pollution % = total_points / 300 * 100
     Cleanliness % = 100 - pollution %
     
@@ -225,15 +225,15 @@ def compute_z_index(color_percentages: dict) -> dict:
     
     # Calculate points
     points_white = white * 0
-    points_purple = purple * 2
-    points_blue = blue * 2.5
-    points_light_blue = light_blue * 3
-    
+    points_purple = purple * 4
+    points_blue = blue * 5
+    points_light_blue = light_blue * 6
+
     total_points = points_white + points_purple + points_blue + points_light_blue
-    total_points = min(total_points, 300)
-    
+    total_points = min(total_points, 600)
+
     # Pollution percentage
-    pollution_pct = round(total_points / 300 * 100)
+    pollution_pct = round(total_points / 600 * 100)
     
     # Cleanliness percentage (inverted)
     cleanliness_pct = 100 - pollution_pct
@@ -263,7 +263,7 @@ def compute_z_index(color_percentages: dict) -> dict:
             "light_blue": points_light_blue,
         },
         "total_points": total_points,
-        "max_points": 300,
+        "max_points": 600,
         "pollution_percentage": pollution_pct,
         "cleanliness_percentage": cleanliness_pct,
         "risk_level": risk_level,

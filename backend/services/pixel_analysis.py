@@ -221,10 +221,10 @@ def _per_tooth(labels: np.ndarray) -> dict:
                 pb = round(100 * b / tot)
                 pc = max(0, 100 - pw - pp - pb)
                 # Severity-weighted plaque index for this tooth (same as overall).
-                # Weights: purple(fresh)=2, blue(medium)=2.5, light_blue(old)=3,
-                # over max 300 — fresh plaque counts strongly so the index reflects
+                # Integer weights: purple(fresh)=4, blue(medium)=5, light_blue(old)=6,
+                # over max 600 — fresh plaque counts strongly so the index reflects
                 # actual coverage, not just plaque age.
-                pollution = round((pp * 2 + pb * 2.5 + pc * 3) / 3)
+                pollution = round((pp * 4 + pb * 5 + pc * 6) / 6)
                 teeth[tid] = {"missing": False, "white": pw, "purple": pp, "blue": pb,
                               "light_blue": pc, "pollution_percentage": min(pollution, 100)}
 
