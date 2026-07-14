@@ -107,12 +107,16 @@ async def analyze_photo(
             #    validation while the vision model is unreachable from the RU
             #    server (Anthropic 403s here); the LLM gate below is authoritative
             #    once AI access is restored.
-            if px.get("tooth_coverage_percent", 0) < 6:
+            logger.info(
+                f"analyze gates(pixel): coverage={px.get('tooth_coverage_percent')}% "
+                f"stained={px.get('stained_area_percent')}%"
+            )
+            if px.get("tooth_coverage_percent", 0) < 3:
                 return AnalyzeResponse(
                     has_teeth=False, error="no_teeth",
                     message="На фото не обнаружены зубы. Пожалуйста, сфотографируйте зубы крупным планом.",
                 )
-            if px.get("stained_area_percent", 0) < 4:
+            if px.get("stained_area_percent", 0) < 2:
                 return AnalyzeResponse(
                     has_teeth=False, error="no_dye_detected",
                     message="Краситель не обнаружен. Пожалуйста, нанесите специальный краситель-индикатор налёта на зубы и сделайте новое фото.",
@@ -126,17 +130,17 @@ async def analyze_photo(
                 data.image, z["pollution_percentage"], z["risk_level"], z["color_percentages"]
             )
 
-            # Authoritative vision validation (second gate after the pixel pre-check):
-            # reject if the model says it isn't teeth or there's no disclosing dye.
+            logger.info(
+                f"analyze gates(LLM): is_teeth={rec.get('is_teeth')} has_dye={rec.get('has_dye')}"
+            )
+            # Second gate: reject only when the vision model is confident it isn't
+            # teeth at all. Dye presence is judged by the pixel stain check above —
+            # the model over-rejects faint gum-line staining, so has_dye is advisory
+            # only, not a hard reject.
             if not rec.get("is_teeth", True):
                 return AnalyzeResponse(
                     has_teeth=False, error="no_teeth",
                     message="На фото не обнаружены зубы. Пожалуйста, сфотографируйте зубы крупным планом.",
-                )
-            if not rec.get("has_dye", True):
-                return AnalyzeResponse(
-                    has_teeth=False, error="no_dye_detected",
-                    message="Краситель не обнаружен. Пожалуйста, нанесите специальный краситель-индикатор налёта на зубы и сделайте новое фото.",
                 )
             recommendations = rec["recommendations"]
             recommendations_en = rec.get("recommendations_en") or []
