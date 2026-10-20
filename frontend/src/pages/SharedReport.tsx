@@ -7,6 +7,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { getSession } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import AppHeader from "@/components/AppHeader";
+import ProgressCard, { type Progress } from "@/components/ProgressCard";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 const client = createClient();
@@ -48,6 +49,7 @@ interface AnalysisData {
   teeth?: Record<string, ToothResult>;
   recommendations?: string[];
   recommendations_en?: string[];
+  progress?: Progress | null;
   // Legacy fields
   php_index?: number;
   plaque_percentage?: number;
@@ -369,7 +371,8 @@ export default function SharedReport() {
             </div>
           </div>
 
-
+          {/* Change since the previous test */}
+          <ProgressCard progress={ad?.progress} />
 
           {/* Per-tooth details */}
           {teeth && (

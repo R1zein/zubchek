@@ -177,7 +177,8 @@ export default function DoctorDashboard() {
       const response = await client.apiCall.invoke({
         url,
         method: "POST",
-        data: { image: imageDataUri, birth_date: selectedPatient.birth_date || undefined },
+        // patient_id lets the backend compare with this patient's previous test.
+        data: { image: imageDataUri, birth_date: selectedPatient.birth_date || undefined, patient_id: selectedPatient.patient_id },
         options: { timeout: 600_000 },
       });
 

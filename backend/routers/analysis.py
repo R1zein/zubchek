@@ -29,6 +29,10 @@ _analysis_sem = asyncio.Semaphore(_ANALYSIS_CONCURRENCY)
 class AnalyzeRequest(BaseModel):
     image: str  # Base64 data URI of the teeth photo
     birth_date: Optional[str] = None  # Kept for backward compat but not used
+    # Doctor analysing a photo for one of their patients: compare with that
+    # patient's history (the report is still saved under the doctor first and
+    # reassigned via /invite/assign-report, as before).
+    patient_id: Optional[str] = None
 
 
 class AnalyzeResponse(BaseModel):
@@ -49,6 +53,7 @@ class AnalyzeResponse(BaseModel):
     error: Optional[str] = None
     message: Optional[str] = None
     report_id: Optional[int] = None
+    progress: Optional[dict] = None  # change since the previous test, if any
     # Legacy compat
     php_index: Optional[float] = None
     plaque_percentage: Optional[int] = None
@@ -73,6 +78,63 @@ async def get_optional_user(
     )
 
 
+async def _history_owner(
+    db: AsyncSession, current_user: Optional[UserResponse], patient_id: Optional[str]
+) -> Optional[str]:
+    """Whose previous reports this analysis should be compared with.
+
+    A patient testing themselves -> their own history. A doctor analysing for a
+    patient -> that patient's history, only if the patient is actively linked
+    to this doctor. Anonymous uploads have no history.
+    """
+    if not current_user:
+        return None
+    if not patient_id:
+        return str(current_user.id)
+    try:
+        link = await db.execute(
+            text("SELECT 1 FROM doctor_patients WHERE user_id = :doctor_id "
+                 "AND patient_id = :patient_id AND status = 'active'"),
+            {"doctor_id": str(current_user.id), "patient_id": patient_id},
+        )
+        return patient_id if link.fetchone() else None
+    except Exception as e:
+        logger.warning(f"doctor-patient link check failed: {e}")
+        await _safe_rollback(db)
+        return None
+
+
+async def _safe_rollback(db: AsyncSession) -> None:
+    """A failed query aborts the Postgres transaction; roll back so the report
+    INSERT that follows still works."""
+    try:
+        await db.rollback()
+    except Exception:
+        pass
+
+
+async def _previous_progress(db: AsyncSession, owner_id: Optional[str], findings: dict) -> Optional[dict]:
+    """Progress vs the owner's latest pixel-analysed report, or None."""
+    from services.teeth_analysis import compute_progress
+
+    if not owner_id:
+        return None
+    try:
+        row = (await db.execute(
+            text("SELECT id, created_at, analysis_data FROM reports "
+                 "WHERE user_id = :uid AND analysis_type = 'z_index_pixel' AND analysis_data IS NOT NULL "
+                 "ORDER BY created_at DESC LIMIT 1"),
+            {"uid": owner_id},
+        )).fetchone()
+        if not row:
+            return None
+        return compute_progress(json.loads(row[2]), row[0], row[1], findings)
+    except Exception as e:  # history is a bonus — never fail the analysis over it
+        logger.warning(f"progress lookup failed: {e}")
+        await _safe_rollback(db)
+        return None
+
+
 @router.post("/analyze", response_model=AnalyzeResponse)
 async def analyze_photo(
     data: AnalyzeRequest,
@@ -86,7 +148,7 @@ async def analyze_photo(
     fallback). Photo validation is done with lenient pixel heuristics.
     """
     from services.pixel_analysis import analyze_teeth_pixels
-    from services.teeth_analysis import compute_z_index, detect_ortho_and_recommend
+    from services.teeth_analysis import compute_z_index, detect_ortho_and_recommend, summarize_findings
 
     try:
         if not data.image:
@@ -125,10 +187,17 @@ async def analyze_photo(
             # 3. Severity-weighted Z-Index from pixel percentages
             z = compute_z_index(px["overall_color_percentages"])
 
+            # 3b. Change since this person's previous test
+            owner_id = await _history_owner(db, current_user, data.patient_id)
+            progress = await _previous_progress(
+                db, owner_id,
+                summarize_findings(z["color_percentages"], px.get("teeth"), z["pollution_percentage"]),
+            )
+
             # 4. One Claude vision call: validation + orthodontic detection + recommendations
             rec = await detect_ortho_and_recommend(
                 data.image, z["pollution_percentage"], z["risk_level"], z["color_percentages"],
-                teeth=px.get("teeth"),
+                teeth=px.get("teeth"), progress=progress,
             )
 
             logger.info(
@@ -159,6 +228,7 @@ async def analyze_photo(
                 "recommendations": recommendations,
                 "recommendations_en": recommendations_en,
                 "recommendations_source": rec.get("recommendations_source"),
+                "progress": progress,
                 "orthodontic_detected": rec["orthodontic_detected"],
                 "orthodontic_type": rec["orthodontic_type"],
                 "teeth": px.get("teeth"),
@@ -215,6 +285,7 @@ async def analyze_photo(
             orthodontic_detected=result["orthodontic_detected"],
             orthodontic_type=result["orthodontic_type"],
             report_id=report_id,
+            progress=progress,
             php_index=pollution_pct / 100.0 if pollution_pct else None,
             plaque_percentage=pollution_pct,
         )

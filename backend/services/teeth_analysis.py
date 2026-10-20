@@ -327,6 +327,7 @@ def summarize_findings(color_pct: dict, teeth: dict | None, pollution_pct: int) 
         "upper": None, "lower": None,
         "right": None, "left": None,
         "worst_tooth": None,  # (id, pollution)
+        "groups": {},         # key -> (key, ru, en, avg), every group with data
     }
     if not teeth:
         return f
@@ -337,6 +338,7 @@ def summarize_findings(color_pct: dict, teeth: dict | None, pollution_pct: int) 
         if avg is not None:
             groups.append((key, ru, en, avg))
     groups.sort(key=lambda g: g[3], reverse=True)
+    f["groups"] = {g[0]: g for g in groups}
     # "Problem" = clearly worse than the mouth average, and not trivially low.
     f["worst_groups"] = [g for g in groups
                          if g[3] >= max(pollution_pct + _ZONE_GAP // 2, 25)][:2]
@@ -377,6 +379,123 @@ def _findings_for_prompt(f: dict) -> str:
     return "\n".join(lines)
 
 
+# Changes smaller than this are within the pixel analyzer's photo-to-photo
+# noise (lighting, angle, how much dye was applied), so we don't call them out.
+_PROGRESS_OVERALL_GAP = 5
+_PROGRESS_ZONE_GAP = 8
+
+
+def compute_progress(prev: dict, prev_report_id: int, prev_created_at, f: dict, now=None) -> dict | None:
+    """Compare this analysis with the patient's previous one.
+
+    `prev` is the previous report's stored analysis_data, `f` the current
+    findings. Returns None when the previous report has no usable numbers.
+    """
+    from datetime import datetime, timezone
+
+    if not isinstance(prev, dict) or prev.get("pollution_percentage") is None:
+        return None
+    pf = summarize_findings(prev.get("color_percentages") or {}, prev.get("teeth") or None,
+                            int(prev["pollution_percentage"]))
+
+    delta = f["pollution"] - pf["pollution"]
+    if delta <= -_PROGRESS_OVERALL_GAP:
+        trend = "improved"
+    elif delta >= _PROGRESS_OVERALL_GAP:
+        trend = "worsened"
+    else:
+        trend = "stable"
+
+    improved, worsened = [], []
+    for key, (_, ru, en, after) in f["groups"].items():
+        if key not in pf["groups"]:
+            continue
+        before = pf["groups"][key][3]
+        change = {"key": key, "ru": ru, "en": en, "before": before, "after": after, "delta": after - before}
+        if after - before <= -_PROGRESS_ZONE_GAP:
+            improved.append(change)
+        elif after - before >= _PROGRESS_ZONE_GAP:
+            worsened.append(change)
+    improved.sort(key=lambda c: c["delta"])
+    worsened.sort(key=lambda c: c["delta"], reverse=True)
+
+    days = None
+    if prev_created_at is not None:
+        now = now or datetime.now(timezone.utc)
+        if prev_created_at.tzinfo is None:
+            prev_created_at = prev_created_at.replace(tzinfo=timezone.utc)
+        days = max(0, (now - prev_created_at).days)
+
+    return {
+        "previous_report_id": prev_report_id,
+        "previous_date": prev_created_at.isoformat() if prev_created_at is not None else None,
+        "days_between": days,
+        "pollution_before": pf["pollution"],
+        "pollution_after": f["pollution"],
+        "delta": delta,
+        "trend": trend,
+        "improved": improved[:3],
+        "worsened": worsened[:3],
+        "mature_before": pf["mature_share"],
+        "mature_after": f["mature_share"],
+    }
+
+
+def _days_ru(n: int) -> str:
+    if n % 10 == 1 and n % 100 != 11:
+        return f"{n} день"
+    if 2 <= n % 10 <= 4 and not 12 <= n % 100 <= 14:
+        return f"{n} дня"
+    return f"{n} дней"
+
+
+def _progress_for_prompt(p: dict) -> str:
+    when = f" ({_days_ru(p['days_between'])} назад)" if p.get("days_between") is not None else ""
+    lines = [
+        f"Динамика с прошлого теста{when}:",
+        f"- Индекс был {p['pollution_before']}%, стал {p['pollution_after']}% "
+        f"({'+' if p['delta'] > 0 else ''}{p['delta']}). Итог: "
+        + {"improved": "улучшение", "worsened": "ухудшение", "stable": "без существенных изменений"}[p["trend"]] + ".",
+        f"- Доля зрелого налёта: была {p['mature_before']}%, стала {p['mature_after']}%.",
+    ]
+    if p["improved"]:
+        lines.append("- Стало чище: " + "; ".join(f"{c['ru']} {c['before']}% → {c['after']}%" for c in p["improved"]) + ".")
+    if p["worsened"]:
+        lines.append("- Стало хуже: " + "; ".join(f"{c['ru']} {c['before']}% → {c['after']}%" for c in p["worsened"]) + ".")
+    lines.append(
+        "Первая рекомендация — о динамике: конкретно отметь, что улучшилось (зоны и цифры), и прямо "
+        "назови, что ухудшилось или не изменилось. Изменения меньше 5 пунктов в пределах погрешности "
+        "фото — не называй их улучшением. Не придумывай динамику сверх этих данных."
+    )
+    return "\n".join(lines)
+
+
+def _progress_recommendation(p: dict) -> tuple[str, str]:
+    """Rule-based (ru, en) item describing the change since the last test."""
+    when_ru = f" ({_days_ru(p['days_between'])} назад)" if p.get("days_between") is not None else ""
+    when_en = f" ({p['days_between']} days ago)" if p.get("days_between") is not None else ""
+    b, a = p["pollution_before"], p["pollution_after"]
+    if p["trend"] == "improved":
+        ru = f"Есть прогресс: с прошлого теста{when_ru} индекс налёта снизился с {b}% до {a}%."
+        en = f"You are making progress: since your last test{when_en} the plaque index dropped from {b}% to {a}%."
+    elif p["trend"] == "worsened":
+        ru = f"С прошлого теста{when_ru} индекс налёта вырос с {b}% до {a}% — гигиена ослабла, к ней стоит вернуться."
+        en = f"Since your last test{when_en} the plaque index rose from {b}% to {a}% — your routine has slipped and needs attention."
+    else:
+        ru = f"С прошлого теста{when_ru} индекс почти не изменился ({b}% → {a}%)."
+        en = f"Since your last test{when_en} the index has barely changed ({b}% → {a}%)."
+    if p["improved"]:
+        ru += " Заметно чище стало на " + ", ".join(f"{c['ru']} ({c['before']}% → {c['after']}%)" for c in p["improved"]) + " — то, что вы изменили в чистке этих зон, работает."
+        en += " Noticeably cleaner: " + ", ".join(f"{c['en']} ({c['before']}% → {c['after']}%)" for c in p["improved"]) + " — whatever you changed there is working."
+    if p["worsened"]:
+        ru += " Хуже стало на " + ", ".join(f"{c['ru']} ({c['before']}% → {c['after']}%)" for c in p["worsened"]) + " — уделите им больше времени."
+        en += " Worse: " + ", ".join(f"{c['en']} ({c['before']}% → {c['after']}%)" for c in p["worsened"]) + " — give these areas more time."
+    if not p["improved"] and not p["worsened"] and p["trend"] == "stable":
+        ru += " Чтобы сдвинуться с места, сосредоточьтесь на зонах из рекомендаций ниже."
+        en += " To move forward, focus on the areas in the recommendations below."
+    return ru, en
+
+
 def _ortho_kind(ortho_type: str | None) -> str | None:
     """Normalise a free-text appliance description to braces/aligners/retainer."""
     if not ortho_type:
@@ -392,7 +511,7 @@ def _ortho_kind(ortho_type: str | None) -> str | None:
 
 
 def build_rule_based_recommendations(
-    f: dict, risk_level: str, ortho_type: str | None = None
+    f: dict, risk_level: str, ortho_type: str | None = None, progress: dict | None = None
 ) -> tuple[list, list]:
     """Specific, data-driven recommendations without the AI (ru, en).
 
@@ -402,6 +521,12 @@ def build_rule_based_recommendations(
     """
     ru: list = []
     en: list = []
+
+    # 0. Progress since the previous test — the most motivating fact we have.
+    if progress:
+        p_ru, p_en = _progress_recommendation(progress)
+        ru.append(p_ru)
+        en.append(p_en)
 
     # 1. Where — the zones that need the most attention.
     if f["worst_groups"]:
@@ -581,7 +706,7 @@ def build_rule_based_recommendations(
             "a professional cleaning every 6 months. Repeat the dye test every 2–3 months to keep track."
         )
 
-    return ru[:7], en[:7]
+    return ru[:8], en[:8]
 
 
 def _recs_look_usable(recs) -> bool:
@@ -628,7 +753,7 @@ _RECS_PROMPT = """Ты — стоматолог-гигиенист. Тебе п�
 
 async def detect_ortho_and_recommend(
     image_data_uri: str, pollution_pct: int, risk_level: str, color_pct: dict,
-    teeth: dict | None = None,
+    teeth: dict | None = None, progress: dict | None = None,
 ) -> dict:
     """One vision call: validate the photo, detect orthodontic appliances and
     write personalised hygiene recommendations in Russian and English.
@@ -640,7 +765,10 @@ async def detect_ortho_and_recommend(
     `build_rule_based_recommendations` (still specific to this patient).
     """
     findings = summarize_findings(color_pct, teeth, pollution_pct)
-    prompt = _RECS_PROMPT.format(findings=_findings_for_prompt(findings))
+    facts = _findings_for_prompt(findings)
+    if progress:
+        facts += "\n\n" + _progress_for_prompt(progress)
+    prompt = _RECS_PROMPT.format(findings=facts)
 
     # Aligner attachments are small and tooth-coloured, so keep detail high.
     compressed = compress_image_data_uri(image_data_uri, max_size=1600, quality=90)
@@ -671,7 +799,7 @@ async def detect_ortho_and_recommend(
 
     if payload is None:
         # AI unavailable: don't block (the pixel pre-check already passed) — assume valid.
-        recs, recs_en = build_rule_based_recommendations(findings, risk_level)
+        recs, recs_en = build_rule_based_recommendations(findings, risk_level, progress=progress)
         return {
             "is_teeth": True,
             "has_dye": True,
@@ -694,7 +822,7 @@ async def detect_ortho_and_recommend(
             f"AI recommendations unusable (ru={len(recs) if isinstance(recs, list) else '?'}, "
             f"en={len(recs_en) if isinstance(recs_en, list) else '?'}), using rule-based set"
         )
-        recs, recs_en = build_rule_based_recommendations(findings, risk_level, ortho_type)
+        recs, recs_en = build_rule_based_recommendations(findings, risk_level, ortho_type, progress)
         source = "rules"
 
     return {

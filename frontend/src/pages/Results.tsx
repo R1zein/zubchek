@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { getSession, client } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import AppHeader from "@/components/AppHeader";
+import ProgressCard, { type Progress } from "@/components/ProgressCard";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 interface ColorPercentages {
@@ -48,6 +49,7 @@ interface AnalysisResult {
   orthodontic_detected?: boolean;
   orthodontic_type?: string | null;
   report_id?: number;
+  progress?: Progress | null;
   error?: string;
   message?: string;
   // Legacy compat
@@ -292,7 +294,8 @@ export default function Results() {
             </div>
           </div>
 
-
+          {/* Change since the previous test */}
+          <ProgressCard progress={analysisResult.progress} />
 
           {/* Per-tooth details */}
           {teeth && (
