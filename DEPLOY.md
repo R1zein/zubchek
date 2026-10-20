@@ -56,24 +56,20 @@ S3_PUBLIC_BASE_URL=https://s3.twcstorage.ru/zubchek-photos   # path-style
 
 ## 3. Как передеплоить
 
-**Backend:**
+Деплоится только закоммиченное (`git HEAD`). Оба скрипта делают резервную копию
+на сервере, работают одним SSH-подключением и в конце сами проверяют результат.
+
 ```bash
-# с локальной машины: залить исходники в /opt/zubchek, затем на сервере
-docker compose build backend && docker compose up -d backend
+bash deploy-backend.sh    # бэкенд + адрес релея + модель; в конце — тестовый вызов ИИ
+bash deploy-frontend.sh   # фронт собирается локально, заливается в frontend-dist
 ```
 
-**Frontend:**
-```bash
-# сборка в контейнере node:20-alpine с VITE_API_BASE_URL=https://api.zubchek.com
-# затем обновить содержимое frontend-dist, НЕ удаляя сам каталог:
-find frontend-dist -mindepth 1 -delete && cp -r dist/. frontend-dist/
-docker compose restart caddy
-```
+Бэкенд выкатывать первым: новые поля API старый фронт просто игнорирует.
 
 > ⚠️ **Главная грабля.** Caddy бинд-маунтит `frontend-dist` по inode. Если
 > сделать `rm -rf frontend-dist && cp -r dist frontend-dist`, маунт порвётся и
-> сайт целиком отдаст **404**. Поэтому либо чистить содержимое на месте (как
-> выше), либо после замены обязательно `docker compose restart caddy`.
+> сайт целиком отдаст **404**. Поэтому либо чистить содержимое на месте (так
+> делает deploy-frontend.sh), либо после замены обязательно `docker compose restart caddy`.
 
 Ещё: у фронта есть service worker — после деплоя пользователям может
 потребоваться Ctrl+F5.
