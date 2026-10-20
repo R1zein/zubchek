@@ -616,7 +616,6 @@ export default function DoctorDashboard() {
                   <button
                     type="button"
                     onClick={() => setNewPatientGender("male")}
-                    autoComplete="off"
                     className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${newPatientGender === "male" ? "bg-purple-100 dark:bg-purple-900/50 border-purple-300 dark:border-purple-600 text-purple-700 dark:text-purple-300" : "bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600"}`}
                   >
                     Мужской
@@ -624,7 +623,6 @@ export default function DoctorDashboard() {
                   <button
                     type="button"
                     onClick={() => setNewPatientGender("female")}
-                    autoComplete="off"
                     className={`flex-1 py-2.5 rounded-lg text-sm font-medium border transition-colors ${newPatientGender === "female" ? "bg-purple-100 dark:bg-purple-900/50 border-purple-300 dark:border-purple-600 text-purple-700 dark:text-purple-300" : "bg-white dark:bg-gray-700 border-gray-200 dark:border-gray-600 text-gray-600 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600"}`}
                   >
                     Женский
