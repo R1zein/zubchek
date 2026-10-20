@@ -1,4 +1,4 @@
-const CACHE_NAME = 'zubchek-v1';
+const CACHE_NAME = 'zubchek-v2';
 const STATIC_ASSETS = [
   '/',
   '/manifest.json',
