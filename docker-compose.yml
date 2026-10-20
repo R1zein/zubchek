@@ -1,5 +1,5 @@
 # Local / self-hosted stack: Postgres + FastAPI backend.
-# The frontend is built and deployed separately (see MIGRATION.md).
+# The frontend is built and deployed separately (see DEPLOY.md).
 #
 #   docker compose up --build
 #

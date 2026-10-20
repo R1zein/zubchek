@@ -138,7 +138,9 @@ class AIHubService:
 
             response = await client.chat.completions.create(**params)
 
-            content = response.choices[0].message.content or ""
+            choice = response.choices[0]
+            content = choice.message.content or ""
+            finish_reason = getattr(choice, "finish_reason", None)
             usage = None
             if response.usage:
                 usage = {
@@ -146,11 +148,17 @@ class AIHubService:
                     "completion_tokens": response.usage.completion_tokens,
                     "total_tokens": response.usage.total_tokens,
                 }
+            if finish_reason == "length":
+                # Output hit max_tokens and was cut off. On current Claude models
+                # thinking is on by default and spends the same budget, so this
+                # usually means max_tokens is too low for the request.
+                logger.warning(f"gentxt truncated at max_tokens={request.max_tokens}, usage={usage}")
 
             return GenTxtResponse(
                 content=content,
                 model=request.model,
                 usage=usage,
+                finish_reason=finish_reason,
             )
 
         except Exception as e:

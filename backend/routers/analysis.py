@@ -10,7 +10,7 @@ from sqlalchemy import text
 
 from core.database import get_db
 from services.teeth_analysis import analyze_teeth_photo
-from services.r2_storage import store_image
+from services.s3_storage import store_image
 from schemas.auth import UserResponse
 
 logger = logging.getLogger(__name__)
@@ -127,11 +127,13 @@ async def analyze_photo(
 
             # 4. One Claude vision call: validation + orthodontic detection + recommendations
             rec = await detect_ortho_and_recommend(
-                data.image, z["pollution_percentage"], z["risk_level"], z["color_percentages"]
+                data.image, z["pollution_percentage"], z["risk_level"], z["color_percentages"],
+                teeth=px.get("teeth"),
             )
 
             logger.info(
-                f"analyze gates(LLM): is_teeth={rec.get('is_teeth')} has_dye={rec.get('has_dye')}"
+                f"analyze gates(LLM): is_teeth={rec.get('is_teeth')} has_dye={rec.get('has_dye')} "
+                f"recs_source={rec.get('recommendations_source')}"
             )
             # Second gate: reject only when the vision model is confident it isn't
             # teeth at all. Dye presence is judged by the pixel stain check above —
@@ -156,6 +158,7 @@ async def analyze_photo(
                 "hygiene_level": z["hygiene_level"],
                 "recommendations": recommendations,
                 "recommendations_en": recommendations_en,
+                "recommendations_source": rec.get("recommendations_source"),
                 "orthodontic_detected": rec["orthodontic_detected"],
                 "orthodontic_type": rec["orthodontic_type"],
                 "teeth": px.get("teeth"),
@@ -168,7 +171,7 @@ async def analyze_photo(
         report_id = None
         user_id = str(current_user.id) if current_user else None
         pollution_pct = result["pollution_percentage"]
-        # Offload the photo to R2 when configured (store a URL instead of base64);
+        # Offload the photo to object storage when configured (store a URL instead of base64);
         # falls back to the base64 data URI otherwise. Runs off the event loop.
         image_ref = await asyncio.to_thread(store_image, data.image)
         try:
@@ -262,6 +265,7 @@ async def get_extended_recommendations(
     db: AsyncSession = Depends(get_db),
 ):
     """Generate extended AI recommendations for a report, including orthodontic detection."""
+    analysis_data: dict = {}
     try:
         # Fetch report with image
         result = await db.execute(
@@ -277,13 +281,15 @@ async def get_extended_recommendations(
         plaque_pct = row[2] or analysis_data.get("pollution_percentage", 0)
         risk_level = row[3] or analysis_data.get("risk_level", "low")
 
-        # Build teeth summary for the prompt
-        teeth_info = ""
-        teeth = analysis_data.get("teeth", {})
-        for tooth_key, tooth_data in teeth.items():
-            if isinstance(tooth_data, dict) and not tooth_data.get("missing"):
-                pct = tooth_data.get("pollution_percentage", 0)
-                teeth_info += f"  Зуб {tooth_key}: налёт {pct}%\n"
+        # Same facts the main report is built on (zones, sides, plaque age),
+        # instead of a bare list of per-tooth numbers.
+        from services.teeth_analysis import summarize_findings, _findings_for_prompt
+        findings = summarize_findings(
+            analysis_data.get("color_percentages") or {},
+            analysis_data.get("teeth") or None,
+            int(plaque_pct or 0),
+        )
+        teeth_info = _findings_for_prompt(findings)
 
         lang_instruction = "Отвечай ТОЛЬКО на русском языке." if data.lang == "ru" else "Respond ONLY in English."
 
@@ -291,11 +297,11 @@ async def get_extended_recommendations(
 
 {lang_instruction}
 
-Current analysis data:
-- Overall plaque index: {plaque_pct}%
+Current analysis data (from a pixel analysis of this photo — trust these numbers over your own colour estimate):
 - Risk level: {risk_level}
-- Per-tooth data:
 {teeth_info}
+
+Every recommendation must be tied to a specific fact about THIS patient (a zone, a number, plaque age, an appliance) and explain what to do, why, and how. Generic advice that would fit anyone is not acceptable. No markdown, no numbering inside strings, no diagnoses.
 
 Your tasks:
 1. DETECT ORTHODONTIC APPLIANCES: Carefully examine the photo for any orthodontic constructions:
@@ -349,18 +355,28 @@ Respond ONLY with valid JSON:
         request = GenTxtRequest(
             model=get_ai_model(),
             messages=messages,
+            # Thinking shares this budget on current Claude models; the old
+            # 4096 default truncated 6-8 detailed items mid-JSON.
+            max_tokens=16000,
         )
 
-        response = await ai_service.gentxt(request)
-        response_text = response.content if hasattr(response, "content") else str(response)
-
-        # Parse JSON from response
         from services.teeth_analysis import extract_json_block
-        json_str = extract_json_block(response_text)
-        payload = json.loads(json_str)
+        payload = None
+        for attempt in (1, 2):
+            try:
+                response = await ai_service.gentxt(request)
+                payload = json.loads(extract_json_block(response.content.strip()))
+                if not isinstance(payload, dict) or not payload.get("recommendations"):
+                    raise ValueError("no recommendations in AI answer")
+                break
+            except Exception as e:
+                payload = None
+                logger.warning(f"Extended recommendations attempt {attempt} failed: {e}")
+        if payload is None:
+            raise RuntimeError("AI unavailable for extended recommendations")
 
         return ExtendedRecsResponse(
-            recommendations=payload.get("recommendations", []),
+            recommendations=[str(r).strip() for r in payload.get("recommendations", [])],
             orthodontic_detected=payload.get("orthodontic_detected", False),
             orthodontic_type=payload.get("orthodontic_type"),
         )
@@ -369,24 +385,17 @@ Respond ONLY with valid JSON:
         raise
     except Exception as e:
         logger.error(f"Extended recommendations error: {e}")
-        # Return fallback recommendations
-        fallback = [
-            "Чистите зубы минимум 2 раза в день по 3 минуты.",
-            "Используйте зубную нить или межзубные ёршики ежедневно.",
-            "Применяйте ирригатор для труднодоступных участков.",
-            "Посещайте стоматолога для профессиональной чистки каждые 6 месяцев.",
-            "Ограничьте употребление сладких и кислых продуктов.",
-            "Используйте ополаскиватель с фтором после чистки.",
-        ] if data.lang == "ru" else [
-            "Brush your teeth at least 2 times a day for 3 minutes.",
-            "Use dental floss or interdental brushes daily.",
-            "Use a water flosser for hard-to-reach areas.",
-            "Visit your dentist for professional cleaning every 6 months.",
-            "Limit sugary and acidic foods.",
-            "Use a fluoride mouthwash after brushing.",
-        ]
+        # Fallback built from this report's own numbers, not a generic list.
+        from services.teeth_analysis import summarize_findings, build_rule_based_recommendations
+        ad = analysis_data if isinstance(analysis_data, dict) else {}
+        findings = summarize_findings(
+            ad.get("color_percentages") or {}, ad.get("teeth") or None,
+            int(ad.get("pollution_percentage") or 0),
+        )
+        ortho_type = ad.get("orthodontic_type") if ad.get("orthodontic_detected") else None
+        ru, en = build_rule_based_recommendations(findings, ad.get("risk_level") or "low", ortho_type)
         return ExtendedRecsResponse(
-            recommendations=fallback,
-            orthodontic_detected=False,
-            orthodontic_type=None,
+            recommendations=ru if data.lang == "ru" else en,
+            orthodontic_detected=bool(ortho_type),
+            orthodontic_type=ortho_type,
         )

@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 # Vision model used for teeth analysis. Overridable via the APP_AI_MODEL env
 # var so the provider/model can be swapped without code changes.
-DEFAULT_AI_MODEL = "claude-opus-4-8"
+DEFAULT_AI_MODEL = "claude-sonnet-5-5"
 
 
 def get_ai_model() -> str:
@@ -271,161 +271,440 @@ def compute_z_index(color_percentages: dict) -> dict:
     }
 
 
-def _static_recommendations(risk_level: str) -> list:
-    """Fallback recommendations when the AI text service is unavailable."""
-    base = [
-        "Чистите зубы дважды в день фторсодержащей пастой не менее 2 минут.",
-        "Ежедневно используйте зубную нить или ирригатор для межзубных промежутков.",
+# ---------------------------------------------------------------------------
+# Recommendations
+#
+# The pixel analyzer gives us much more than one number: per-tooth colour
+# shares, upper vs lower arch, patient's right vs left side, and plaque age.
+# `summarize_findings` turns that into concrete facts. Both the AI prompt and
+# the rule-based fallback are built from those facts, so a report never falls
+# back to generic "brush twice a day" advice that would fit any patient.
+# ---------------------------------------------------------------------------
+
+# Tooth groups, mirrored pairs (FDI numbering, patient's perspective).
+_TOOTH_GROUPS = [
+    ("upper_central", ("1.1", "2.1"), "верхних центральных резцах", "upper central incisors"),
+    ("upper_lateral", ("1.2", "2.2"), "верхних боковых резцах", "upper lateral incisors"),
+    ("upper_canine", ("1.3", "2.3"), "верхних клыках", "upper canines"),
+    ("lower_central", ("3.1", "4.1"), "нижних центральных резцах", "lower central incisors"),
+    ("lower_lateral", ("3.2", "4.2"), "нижних боковых резцах", "lower lateral incisors"),
+    ("lower_canine", ("3.3", "4.3"), "нижних клыках", "lower canines"),
+]
+_UPPER = ("1.1", "1.2", "1.3", "2.1", "2.2", "2.3")
+_LOWER = ("3.1", "3.2", "3.3", "4.1", "4.2", "4.3")
+_RIGHT = ("1.1", "1.2", "1.3", "4.1", "4.2", "4.3")  # patient's right side
+_LEFT = ("2.1", "2.2", "2.3", "3.1", "3.2", "3.3")
+
+# How far apart two zones must be (in index points) before we call it out.
+_ZONE_GAP = 10
+
+
+def _avg_pollution(teeth: dict, ids) -> int | None:
+    vals = [teeth[t]["pollution_percentage"] for t in ids
+            if t in teeth and not teeth[t].get("missing")]
+    return round(sum(vals) / len(vals)) if vals else None
+
+
+def summarize_findings(color_pct: dict, teeth: dict | None, pollution_pct: int) -> dict:
+    """Turn raw pixel numbers into the facts recommendations should rest on."""
+    purple = color_pct.get("purple", 0)
+    blue = color_pct.get("blue", 0)
+    old = color_pct.get("light_blue", 0)
+    stained = purple + blue + old
+    # Share of stained surface that is NOT fresh — plaque that has survived at
+    # least one brushing (blue = medium, light_blue = old).
+    mature_share = round(100 * (blue + old) / stained) if stained else 0
+
+    f = {
+        "pollution": pollution_pct,
+        "stained": stained,
+        "fresh": purple,
+        "medium": blue,
+        "old": old,
+        "mature_share": mature_share,
+        "worst_groups": [],   # [(key, ru, en, avg)] most plaque first
+        "clean_groups": [],   # [(key, ru, en, avg)]
+        "upper": None, "lower": None,
+        "right": None, "left": None,
+        "worst_tooth": None,  # (id, pollution)
+    }
+    if not teeth:
+        return f
+
+    groups = []
+    for key, ids, ru, en in _TOOTH_GROUPS:
+        avg = _avg_pollution(teeth, ids)
+        if avg is not None:
+            groups.append((key, ru, en, avg))
+    groups.sort(key=lambda g: g[3], reverse=True)
+    # "Problem" = clearly worse than the mouth average, and not trivially low.
+    f["worst_groups"] = [g for g in groups
+                         if g[3] >= max(pollution_pct + _ZONE_GAP // 2, 25)][:2]
+    if not f["worst_groups"] and groups and groups[0][3] >= 25:
+        f["worst_groups"] = groups[:1]
+    f["clean_groups"] = [g for g in groups if g[3] <= 15]
+
+    f["upper"] = _avg_pollution(teeth, _UPPER)
+    f["lower"] = _avg_pollution(teeth, _LOWER)
+    f["right"] = _avg_pollution(teeth, _RIGHT)
+    f["left"] = _avg_pollution(teeth, _LEFT)
+
+    present = [(t, v["pollution_percentage"]) for t, v in teeth.items() if not v.get("missing")]
+    if present:
+        f["worst_tooth"] = max(present, key=lambda x: x[1])
+    return f
+
+
+def _findings_for_prompt(f: dict) -> str:
+    """Compact, factual Russian summary of the findings for the model."""
+    lines = [
+        f"- Индекс загрязнённости (взвешенный по возрасту налёта): {f['pollution']}%.",
+        f"- Окрашено {f['stained']}% поверхности зубов: свежий налёт {f['fresh']}%, "
+        f"средний {f['medium']}%, старый {f['old']}%. Зрелый (средний+старый) — "
+        f"{f['mature_share']}% всего налёта.",
     ]
-    if risk_level == "high":
-        base.append("Обратитесь к стоматологу-гигиенисту для профессиональной чистки.")
-        base.append("Особое внимание уделите придесневой зоне и внутренним поверхностям зубов.")
-    elif risk_level == "medium":
-        base.append("Уделите больше внимания технике чистки в зонах скопления налёта.")
-    else:
-        base.append("Отличный уровень гигиены — продолжайте в том же духе.")
-    return base
+    if f["worst_groups"]:
+        lines.append("- Больше всего налёта: " + "; ".join(
+            f"{g[1]} — {g[3]}%" for g in f["worst_groups"]) + ".")
+    if f["clean_groups"]:
+        lines.append("- Чище всего: " + ", ".join(g[1] for g in f["clean_groups"]) + ".")
+    if f["upper"] is not None and f["lower"] is not None:
+        lines.append(f"- Верхняя челюсть {f['upper']}%, нижняя {f['lower']}%.")
+    if f["right"] is not None and f["left"] is not None:
+        lines.append(f"- Правая сторона пациента {f['right']}%, левая {f['left']}%.")
+    if f["worst_tooth"]:
+        lines.append(f"- Самый загрязнённый зуб: {f['worst_tooth'][0]} ({f['worst_tooth'][1]}%).")
+    return "\n".join(lines)
 
 
-def _static_recommendations_en(risk_level: str) -> list:
-    """English fallback recommendations when the AI text service is unavailable."""
-    base = [
-        "Brush twice a day with a fluoride toothpaste for at least 2 minutes.",
-        "Clean between the teeth daily with floss or an oral irrigator.",
-    ]
-    if risk_level == "high":
-        base.append("See a dental hygienist for a professional cleaning.")
-        base.append("Pay special attention to the gum line and the inner surfaces of the teeth.")
-    elif risk_level == "medium":
-        base.append("Focus more on brushing technique in the areas where plaque builds up.")
-    else:
-        base.append("Excellent hygiene — keep it up.")
-    return base
+def _ortho_kind(ortho_type: str | None) -> str | None:
+    """Normalise a free-text appliance description to braces/aligners/retainer."""
+    if not ortho_type:
+        return None
+    t = ortho_type.lower()
+    if any(w in t for w in ("брекет", "bracket", "brace")):
+        return "braces"
+    if any(w in t for w in ("элайнер", "aligner", "капп", "капа", "аттачмент", "attachment", "кнопк")):
+        return "aligners"
+    if any(w in t for w in ("ретейнер", "retainer", "ретеншн")):
+        return "retainer"
+    return "other"
 
 
-async def generate_recommendations(pollution_pct: int, risk_level: str, color_pct: dict) -> list:
-    """Generate short Russian hygiene recommendations from the numeric result.
+def build_rule_based_recommendations(
+    f: dict, risk_level: str, ortho_type: str | None = None
+) -> tuple[list, list]:
+    """Specific, data-driven recommendations without the AI (ru, en).
 
-    Text-only LLM call (no image) — the numbers come from the pixel analyzer.
-    Falls back to static advice if the AI service is unavailable.
+    Used when the model is unreachable or returns something unusable. Every
+    item is derived from this patient's numbers, so even the fallback names
+    the actual problem zones instead of giving universal advice.
     """
-    prompt = (
-        "Пациенту провели анализ гигиены полости рта по индексу зубного налёта.\n"
-        f"Загрязнённость: {pollution_pct}%. Уровень риска: {risk_level}.\n"
-        f"Состав налёта: свежий (лёгкий) {color_pct.get('purple', 0)}%, "
-        f"средний {color_pct.get('blue', 0)}%, старый (тяжёлый) {color_pct.get('light_blue', 0)}%, "
-        f"чистая эмаль {color_pct.get('white', 0)}%.\n"
-        "Дай 3-4 короткие практические рекомендации по гигиене на русском языке, "
-        "с учётом состава налёта. Ответь ТОЛЬКО JSON-массивом строк, без пояснений. "
-        'Пример: ["рекомендация 1", "рекомендация 2"]'
-    )
-    try:
-        service = AIHubService()
-        request = GenTxtRequest(
-            messages=[ChatMessage(role="user", content=prompt)],
-            model=get_ai_model(),
-            max_tokens=800,
+    ru: list = []
+    en: list = []
+
+    # 1. Where — the zones that need the most attention.
+    if f["worst_groups"]:
+        z_ru = " и ".join(f"{g[1]} ({g[3]}%)" for g in f["worst_groups"])
+        z_en = " and ".join(f"{g[2]} ({g[3]}%)" for g in f["worst_groups"])
+        ru.append(
+            f"Главная зона внимания — налёт сильнее всего скапливается на {z_ru}. "
+            "Начинайте чистку именно с них, пока внимание не рассеялось: щётку держите под углом 45° "
+            "к линии десны и делайте короткие вибрирующие движения на месте (метод Басса), "
+            "по 8–10 движений на каждый участок, затем выметающее движение от десны к краю зуба."
         )
-        response = await service.gentxt(request)
-        arr = json.loads(extract_json_block(response.content.strip()))
-        if isinstance(arr, list) and arr:
-            return [str(x) for x in arr][:4]
-    except Exception as e:  # pragma: no cover - defensive
-        logger.warning(f"AI recommendations failed, using fallback: {e}")
-    return _static_recommendations(risk_level)
+        en.append(
+            f"Main focus area — plaque builds up most on the {z_en}. "
+            "Start brushing there while you are still attentive: hold the brush at 45° to the gum line "
+            "and make short vibrating strokes in place (the Bass technique), 8–10 strokes per spot, "
+            "then sweep from the gum towards the biting edge."
+        )
+    elif f["pollution"] > 30:
+        ru.append(
+            "Налёт распределён по зубам довольно равномерно — значит, дело не в одной пропущенной зоне, "
+            "а в технике и времени чистки в целом. Держите щётку под углом 45° к десне, делайте короткие "
+            "вибрирующие движения (метод Басса) и чистите не меньше 2 минут, мысленно поделив рот на 4 части по 30 секунд."
+        )
+        en.append(
+            "Plaque is spread fairly evenly, so the issue is overall technique and brushing time rather than one "
+            "missed spot. Hold the brush at 45° to the gums, use short vibrating strokes (Bass technique) and brush "
+            "for at least 2 minutes, splitting the mouth into 4 quarters of 30 seconds."
+        )
+
+    # 2. Asymmetry — upper/lower and right/left.
+    if f["lower"] is not None and f["upper"] is not None and f["lower"] - f["upper"] >= _ZONE_GAP:
+        ru.append(
+            f"Нижние зубы загрязнены заметно сильнее верхних ({f['lower']}% против {f['upper']}%). "
+            "Рядом с нижними резцами открываются протоки слюнных желёз, поэтому налёт здесь быстрее "
+            "минерализуется в зубной камень. Чистите нижние передние зубы вертикальными движениями, "
+            "поставив щётку «вертикально», и не забывайте их внутреннюю (язычную) сторону."
+        )
+        en.append(
+            f"Your lower teeth carry noticeably more plaque than the upper ones ({f['lower']}% vs {f['upper']}%). "
+            "Salivary glands open next to the lower incisors, so plaque there hardens into tartar faster. Brush "
+            "the lower front teeth with the brush held upright using vertical strokes, and do not skip their inner side."
+        )
+    elif f["upper"] is not None and f["lower"] is not None and f["upper"] - f["lower"] >= _ZONE_GAP:
+        ru.append(
+            f"Верхние зубы загрязнены сильнее нижних ({f['upper']}% против {f['lower']}%). "
+            "Обычно это значит, что щётка не доходит до линии десны сверху. Приподнимайте губу и "
+            "направляйте щетину вверх под углом 45°, к самому краю десны."
+        )
+        en.append(
+            f"Your upper teeth carry more plaque than the lower ones ({f['upper']}% vs {f['lower']}%). "
+            "This usually means the brush is not reaching the upper gum line. Lift your lip and aim the bristles "
+            "upwards at 45°, right at the edge of the gum."
+        )
+    if f["right"] is not None and f["left"] is not None and abs(f["right"] - f["left"]) >= _ZONE_GAP:
+        worse_ru, worse_en = ("правой", "right") if f["right"] > f["left"] else ("левой", "left")
+        hi, lo = max(f["right"], f["left"]), min(f["right"], f["left"])
+        ru.append(
+            f"На {worse_ru} стороне налёта больше ({hi}% против {lo}%). Чаще всего хуже вычищается сторона "
+            "ведущей руки — её неудобно чистить той же рукой. Начинайте чистку с этой стороны или "
+            "чистите её, переложив щётку в другую руку."
+        )
+        en.append(
+            f"There is more plaque on your {worse_en} side ({hi}% vs {lo}%). The side of your dominant hand is usually "
+            "cleaned worse because it is awkward to reach with that hand. Start with this side, or switch the brush "
+            "to your other hand for it."
+        )
+
+    # 3. Plaque age — the most informative part of the dye test.
+    if f["stained"] > 0:
+        if f["mature_share"] >= 50:
+            ru.append(
+                f"{f['mature_share']}% налёта — зрелый (синий и голубой), то есть он пережил как минимум одну "
+                "чистку. Это не случайный пропуск, а участки, которые вы систематически не очищаете. Зрелый налёт "
+                "за 1–2 недели начинает превращаться в зубной камень, который щёткой уже не удалить, — поэтому "
+                "эти зоны стоит прочищать прицельно каждый вечер."
+            )
+            en.append(
+                f"{f['mature_share']}% of the plaque is mature (blue and light blue), meaning it has survived at least "
+                "one brushing. These are not random misses but areas you consistently skip. Mature plaque starts turning "
+                "into tartar within 1–2 weeks, which a toothbrush can no longer remove — so clean these areas deliberately every evening."
+            )
+        else:
+            ru.append(
+                "Налёт в основном свежий (фиолетовый) — он образовался за последние сутки. Техника в целом "
+                "работает, но не хватает тщательности или времени. Чистите с таймером не меньше 2 минут и "
+                "проверяйте себя языком: гладкая поверхность — чисто, шероховатая — налёт остался."
+            )
+            en.append(
+                "Most of the plaque is fresh (purple) — it formed within the last day. Your technique basically works, "
+                "but you need more thoroughness or time. Brush with a timer for at least 2 minutes and check with your "
+                "tongue: smooth means clean, rough means plaque is still there."
+            )
+
+    # 4. Appliance-specific care.
+    kind = _ortho_kind(ortho_type)
+    if kind == "braces":
+        ru.append(
+            "На фото видны брекеты — вокруг замков и под дугой налёт копится в несколько раз быстрее. "
+            "Используйте монопучковую щётку для очистки вокруг каждого замка, ёршик для пространства под "
+            "дугой и суперфлосс для межзубных промежутков. Ирригатор здесь особенно полезен как дополнение, но не замена щётке."
+        )
+        en.append(
+            "Braces are visible in the photo — plaque builds up several times faster around the brackets and under the wire. "
+            "Use a single-tuft brush around each bracket, an interdental brush under the wire and superfloss between teeth. "
+            "A water flosser helps a lot here, as an addition to brushing, not a replacement."
+        )
+    elif kind == "aligners":
+        ru.append(
+            "Похоже, вы носите элайнеры (видны аттачменты). Капы прижимают налёт к зубам и лишают их "
+            "очищения слюной, поэтому чистите зубы перед каждым надеванием кап, снимайте их для еды и "
+            "сладких напитков. Вокруг аттачментов чистите мягкой щёткой круговыми движениями — налёт "
+            "задерживается у их краёв. Сами капы мойте прохладной водой мягкой щёткой без абразивной пасты."
+        )
+        en.append(
+            "It looks like you wear aligners (attachments are visible). Aligners press plaque against the teeth and block "
+            "saliva from cleaning them, so brush before every time you put them back in, and take them out to eat or drink "
+            "anything sweet. Clean around the attachments with a soft brush in small circles — plaque collects at their edges. "
+            "Wash the aligners in cool water with a soft brush, without abrasive toothpaste."
+        )
+    elif kind == "retainer":
+        ru.append(
+            "Видна ретенционная конструкция. За несъёмным ретейнером налёт и камень скапливаются особенно "
+            "быстро: прочищайте под проволокой суперфлоссом или ёршиком каждый вечер, а съёмный ретейнер "
+            "чистите отдельной щёткой ежедневно."
+        )
+        en.append(
+            "A retainer is visible. Plaque and tartar build up fast behind a fixed retainer: clean under the wire with "
+            "superfloss or an interdental brush every evening, and brush a removable retainer separately every day."
+        )
+
+    # 5. Interdental cleaning — the brush never reaches there, whatever the score.
+    ru.append(
+        "Щётка не очищает межзубные промежутки — а именно там начинается большая часть кариеса и "
+        "воспаления дёсен. Раз в день, лучше вечером, используйте зубную нить или межзубные ёршики "
+        "подходящего размера (ёршик должен входить без усилия, но плотно). Ирригатор — полезное "
+        "дополнение, но нить и ёршики он не заменяет."
+    )
+    en.append(
+        "A toothbrush does not clean between the teeth — and that is where most cavities and gum inflammation start. "
+        "Once a day, ideally in the evening, use floss or interdental brushes of the right size (the brush should slide "
+        "in without force but fit snugly). A water flosser is a good addition but does not replace floss or brushes."
+    )
+
+    # 6. Follow-up — what to do next and when to re-test.
+    if risk_level == "high":
+        ru.append(
+            "При таком уровне налёта рекомендуется профессиональная гигиена у стоматолога-гигиениста в "
+            "ближайшие недели: часть налёта, скорее всего, уже минерализовалась. После чистки повторите "
+            "тест с красителем через 2 недели, чтобы проверить, как изменилась домашняя гигиена."
+        )
+        en.append(
+            "With this much plaque, a professional cleaning at a dental hygienist within the next few weeks is recommended: "
+            "some of it has most likely hardened already. Repeat the dye test 2 weeks after the cleaning to see how your "
+            "home care has improved."
+        )
+    elif risk_level == "medium":
+        ru.append(
+            "Повторите тест с красителем через 3–4 недели и сравните результат: если отмеченные зоны стали "
+            "чище — техника исправлена. Плановую профессиональную гигиену проходите раз в 6 месяцев."
+        )
+        en.append(
+            "Repeat the dye test in 3–4 weeks and compare: if the highlighted areas are cleaner, your technique is fixed. "
+            "Have a routine professional cleaning every 6 months."
+        )
+    else:
+        clean = f["clean_groups"]
+        ru.append(
+            "Хороший уровень гигиены"
+            + (f" — особенно чисто на {', '.join(g[1] for g in clean[:2])}" if clean else "")
+            + ". Сохраняйте привычку: чистка 2 раза в день по 2 минуты пастой с фтором (1450 ppm), "
+            "межзубная нить, профгигиена раз в 6 месяцев. Повторяйте тест с красителем раз в 2–3 месяца для контроля."
+        )
+        en.append(
+            "Good level of hygiene"
+            + (f" — especially clean on the {', '.join(g[2] for g in clean[:2])}" if clean else "")
+            + ". Keep the routine: brush twice a day for 2 minutes with fluoride toothpaste (1450 ppm), floss, and have "
+            "a professional cleaning every 6 months. Repeat the dye test every 2–3 months to keep track."
+        )
+
+    return ru[:7], en[:7]
+
+
+def _recs_look_usable(recs) -> bool:
+    """Reject empty / generic AI output so it doesn't reach the patient.
+
+    The model is asked for 4–6 detailed items; a short list of one-liners means
+    something went wrong (truncation, refusal-style reply) and the rule-based
+    set is better.
+    """
+    if not isinstance(recs, list) or len(recs) < 3:
+        return False
+    texts = [str(r).strip() for r in recs if str(r).strip()]
+    if len(texts) < 3:
+        return False
+    return sum(len(t) for t in texts) / len(texts) >= 80
+
+
+_RECS_PROMPT = """Ты — стоматолог-гигиенист. Тебе прислали фото зубов пациента после нанесения индикатора налёта и результаты автоматического пиксельного анализа этого фото.
+
+ШАГ 1. Проверка фото. Определи по самому изображению, ничего не предполагая заранее:
+- is_teeth: true, если на фото есть человеческие зубы — даже несколько, даже если кадр тёмный, близкий или частичный. false только если зубов нет вообще (лицо целиком, предмет, еда, животное, текст, пустой кадр).
+- has_dye: true, если на зубах есть любое окрашивание индикатором (розовое, красное, фиолетовое, синее — даже слабое или только вдоль десны). false — только если зубы обычного цвета без окраски.
+Если is_teeth=false — верни has_dye=false, orthodontic_detected=false и пустые списки рекомендаций; дальше не анализируй.
+
+ШАГ 2. Ортодонтия. Осмотри каждый зуб: брекеты (замки, дуги, лигатуры), элайнеры (прозрачные капы), аттачменты от элайнеров (маленькие выпуклости цвета зуба на середине коронки — их легко пропустить, ищи блики и бугорки), ретейнеры, пластинки. Если видишь аттачменты — пациент носит элайнеры, даже если кап на фото нет.
+
+ШАГ 3. Рекомендации. Данные пиксельного анализа (точные, им доверяй больше, чем своей оценке цвета):
+{findings}
+
+Напиши 4–6 рекомендаций, персональных для ЭТОГО пациента. Требования:
+- Каждая рекомендация опирается на конкретный факт из данных или фото и называет его: зону (какие зубы, верх/низ, сторона), цифру, возраст налёта, конструкцию. Совет, который подошёл бы любому человеку («чистите зубы 2 раза в день»), без привязки к данным — не годится.
+- Каждая — 2–4 предложения: что не так, почему это важно (что будет, если не исправить) и как именно исправить (техника, инструмент, частота).
+- Порядок — по важности: сначала самая большая проблема этого пациента.
+- Если зрелого налёта много — объясни, что это систематически пропускаемые зоны и риск зубного камня. Если налёт в основном свежий — что техника работает, но не хватает тщательности.
+- Если найдена ортодонтическая конструкция — отдельная рекомендация по уходу именно за ней.
+- Обязательно скажи, когда повторить тест с красителем, и нужна ли профессиональная гигиена.
+- Пиши понятным пациенту языком, без латыни и сокращений, без markdown, без нумерации внутри строк. Не ставь диагнозов — ты оцениваешь гигиену, а не лечишь.
+
+Верни один и тот же набор рекомендаций на двух языках, одинаковый по смыслу: русский (recommendations) и английский (recommendations_en).
+
+Ответь только валидным JSON без пояснений:
+{{"is_teeth": true, "has_dye": true, "orthodontic_detected": false, "orthodontic_type": null, "recommendations": ["...", "..."], "recommendations_en": ["...", "..."]}}"""
 
 
 async def detect_ortho_and_recommend(
-    image_data_uri: str, pollution_pct: int, risk_level: str, color_pct: dict
+    image_data_uri: str, pollution_pct: int, risk_level: str, color_pct: dict,
+    teeth: dict | None = None,
 ) -> dict:
-    """One Claude vision call: detect orthodontic appliances in the photo AND
-    write hygiene recommendations tailored to them, in BOTH Russian and English.
+    """One vision call: validate the photo, detect orthodontic appliances and
+    write personalised hygiene recommendations in Russian and English.
 
-    The numeric index comes from the pixel analyzer; this is the semantic vision
-    + text part. Returns {is_teeth, has_dye, orthodontic_detected, orthodontic_type,
-    recommendations (ru), recommendations_en}. Falls back to static recommendations
-    if the AI is unavailable.
+    The numeric index comes from the pixel analyzer; this is the semantic part.
+    Returns {is_teeth, has_dye, orthodontic_detected, orthodontic_type,
+    recommendations, recommendations_en, recommendations_source}. If the AI is
+    unavailable or its answer is unusable, recommendations come from
+    `build_rule_based_recommendations` (still specific to this patient).
     """
-    prompt = (
-        "Ты — стоматолог-гигиенист. Тебе прислали ФОТО для проверки. НЕ считай заранее, что на нём зубы — "
-        "сначала определи это сам.\n\n"
-        "ШАГ 1. Определи по САМОМУ ИЗОБРАЖЕНИЮ два флага (числа в конце на этом шаге игнорируй — "
-        "если на фото не зубы, они не имеют смысла). ВАЖЕН ПОРЯДОК: сначала зубы, потом краска.\n"
-        "   - is_teeth: true, если на фото ЕСТЬ человеческие зубы — даже несколько, даже если кадр тёмный, "
-        "снят близко/частично или зубы небольшие. false ТОЛЬКО если зубов на фото ВООБЩЕ нет (совсем другой "
-        "объект: лицо целиком, предмет, еда, животное, пейзаж, текст, рука/палец, пустой кадр).\n"
-        "   - has_dye: true, если на зубах есть ЛЮБОЕ окрашивание индикатором налёта — даже слабое, тонкое "
-        "или только вдоль линии десны (розовые/красные/фиолетовые/синие пятна или полоски на эмали). false "
-        "только если зубы полностью обычного бело-жёлтого цвета без какого-либо окрашивания.\n"
-        "   Если is_teeth=false — сразу поставь has_dye=false, orthodontic_detected=false, пустой recommendations "
-        "и дальше НЕ анализируй.\n\n"
-        f"Числовые данные (актуальны, только если на фото зубы): загрязнённость {pollution_pct}%, риск {risk_level}. "
-        f"Состав налёта: свежий {color_pct.get('purple', 0)}%, средний {color_pct.get('blue', 0)}%, "
-        f"старый {color_pct.get('light_blue', 0)}%, чистая эмаль {color_pct.get('white', 0)}%.\n\n"
-        "ШАГ 2 (только если is_teeth=true И has_dye=true). Осмотри КАЖДЫЙ зуб на ортодонтические конструкции:\n"
-        "   - брекеты (металлические/керамические замки, дуги, лигатуры);\n"
-        "   - элайнеры (прозрачные капы поверх зубов);\n"
-        "   - АТТАЧМЕНТЫ / КНОПКИ от элайнеров — маленькие выпуклости ЦВЕТА ЗУБА "
-        "(композитные бугорки) обычно на середине коронки; их легко пропустить, ищи "
-        "небольшие выступы/блики на гладкой поверхности зуба. Если они есть — пациент "
-        "носит элайнеры, даже если самих кап на фото нет;\n"
-        "   - ретейнеры, пластинки, расширители, дуги.\n"
-        "   Определи ТИП. Если видишь аттачменты/кнопки — обязательно укажи это.\n"
-        "ШАГ 3. Дай 4–5 ПОДРОБНЫХ рекомендаций по гигиене. Каждая рекомендация — это 2–4 полных "
-        "предложения: что делать, ЗАЧЕМ (какую проблему по данным анализа это решает) и КАК "
-        "правильно (конкретная техника, средства, частота). Опирайся на цифры анализа: где "
-        "именно больше налёта и насколько он свежий/старый. Пиши развёрнуто, понятным пациенту "
-        "языком, без сокращений. Если есть ортодонтическая конструкция — обязательно добавь "
-        "подробный уход именно под неё (ёршики/суперфлосс/воск для брекетов; чистка кап, снятие "
-        "перед едой, правильное хранение для элайнеров; аккуратная чистка вокруг аттачментов "
-        "без сколов). Верни ОДИН И ТОТ ЖЕ набор рекомендаций НА ДВУХ ЯЗЫКАХ, одинаковый по смыслу: "
-        "на русском (поле recommendations) и на английском (поле recommendations_en).\n\n"
-        "Ответь ТОЛЬКО валидным JSON:\n"
-        '{"is_teeth": true/false, "has_dye": true/false, "orthodontic_detected": true/false, '
-        '"orthodontic_type": "тип или null", "recommendations": ["...", "..."], '
-        '"recommendations_en": ["...", "..."]}'
+    findings = summarize_findings(color_pct, teeth, pollution_pct)
+    prompt = _RECS_PROMPT.format(findings=_findings_for_prompt(findings))
+
+    # Aligner attachments are small and tooth-coloured, so keep detail high.
+    compressed = compress_image_data_uri(image_data_uri, max_size=1600, quality=90)
+    request = GenTxtRequest(
+        messages=[ChatMessage(role="user", content=[
+            {"type": "text", "text": prompt},
+            {"type": "image_url", "image_url": {"url": compressed}},
+        ])],
+        model=get_ai_model(),
+        # Current Claude models think by default and that spends the same
+        # budget; 3000 used to truncate the bilingual answer mid-JSON, which
+        # silently dropped every report to the static fallback.
+        max_tokens=16000,
     )
-    try:
-        service = AIHubService()
-        # Higher quality than the numeric path: aligner attachments are small and
-        # tooth-coloured, so preserve detail for detection.
-        compressed = compress_image_data_uri(image_data_uri, max_size=1600, quality=90)
-        request = GenTxtRequest(
-            messages=[ChatMessage(role="user", content=[
-                {"type": "text", "text": prompt},
-                {"type": "image_url", "image_url": {"url": compressed}},
-            ])],
-            model=get_ai_model(),
-            max_tokens=3000,
-        )
-        response = await service.gentxt(request)
-        payload = json.loads(extract_json_block(response.content.strip()))
-        is_teeth = bool(payload.get("is_teeth", True))
-        has_dye = bool(payload.get("has_dye", True))
-        recs = payload.get("recommendations") or []
-        recs_en = payload.get("recommendations_en") or []
-        if not (isinstance(recs, list) and recs):
-            recs = _static_recommendations(risk_level)
-        if not (isinstance(recs_en, list) and recs_en):
-            recs_en = _static_recommendations_en(risk_level)
+
+    payload = None
+    service = AIHubService()
+    for attempt in (1, 2):
+        try:
+            response = await service.gentxt(request)
+            payload = json.loads(extract_json_block(response.content.strip()))
+            if not isinstance(payload, dict):
+                raise ValueError("AI answer is not a JSON object")
+            break
+        except Exception as e:  # pragma: no cover - defensive
+            payload = None
+            logger.warning(f"ortho+recommend AI attempt {attempt} failed: {e}")
+
+    if payload is None:
+        # AI unavailable: don't block (the pixel pre-check already passed) — assume valid.
+        recs, recs_en = build_rule_based_recommendations(findings, risk_level)
         return {
-            "is_teeth": is_teeth,
-            "has_dye": has_dye,
-            "orthodontic_detected": bool(payload.get("orthodontic_detected", False)),
-            "orthodontic_type": payload.get("orthodontic_type") or None,
-            "recommendations": [str(x) for x in recs][:8],
-            "recommendations_en": [str(x) for x in recs_en][:8],
+            "is_teeth": True,
+            "has_dye": True,
+            "orthodontic_detected": False,
+            "orthodontic_type": None,
+            "recommendations": recs,
+            "recommendations_en": recs_en,
+            "recommendations_source": "rules",
         }
-    except Exception as e:  # pragma: no cover - defensive
-        logger.warning(f"ortho+recommend AI failed, using fallback: {e}")
-    # AI unavailable: don't block (the pixel pre-check already passed) — assume valid.
+
+    is_teeth = bool(payload.get("is_teeth", True))
+    ortho_detected = bool(payload.get("orthodontic_detected", False))
+    ortho_type = (payload.get("orthodontic_type") or None) if ortho_detected else None
+    recs = payload.get("recommendations") or []
+    recs_en = payload.get("recommendations_en") or []
+
+    source = "ai"
+    if is_teeth and not (_recs_look_usable(recs) and _recs_look_usable(recs_en)):
+        logger.warning(
+            f"AI recommendations unusable (ru={len(recs) if isinstance(recs, list) else '?'}, "
+            f"en={len(recs_en) if isinstance(recs_en, list) else '?'}), using rule-based set"
+        )
+        recs, recs_en = build_rule_based_recommendations(findings, risk_level, ortho_type)
+        source = "rules"
+
     return {
-        "is_teeth": True,
-        "has_dye": True,
-        "orthodontic_detected": False,
-        "orthodontic_type": None,
-        "recommendations": _static_recommendations(risk_level),
-        "recommendations_en": _static_recommendations_en(risk_level),
+        "is_teeth": is_teeth,
+        "has_dye": bool(payload.get("has_dye", True)),
+        "orthodontic_detected": ortho_detected,
+        "orthodontic_type": ortho_type,
+        "recommendations": [str(x).strip() for x in recs][:8],
+        "recommendations_en": [str(x).strip() for x in recs_en][:8],
+        "recommendations_source": source,
     }
 
 

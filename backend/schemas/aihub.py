@@ -60,6 +60,7 @@ class GenTxtResponse(BaseModel):
     content: str = Field(..., description="Generated text content.")
     model: str = Field(..., description="Name of the model used.")
     usage: Optional[dict] = Field(default=None, description="Token usage statistics.")
+    finish_reason: Optional[str] = Field(default=None, description='Why generation stopped ("stop", "length", ...).')
 
 
 # ==================== Generate Image ====================
