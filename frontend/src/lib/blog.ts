@@ -191,11 +191,12 @@ function getSiteDomainUrl() {
 }
 
 function getSiteName() {
-  return import.meta.env.VITE_APP_TITLE?.trim() || 'Atoms';
+  return import.meta.env.VITE_APP_TITLE?.trim() || 'Zubchek';
 }
 
 function getTwitterSiteHandle() {
-  return import.meta.env.VITE_TWITTER_SITE?.trim() || '@atoms';
+  // No default handle: the twitter:site tag is only emitted when one is configured.
+  return import.meta.env.VITE_TWITTER_SITE?.trim() || undefined;
 }
 
 function getTwitterCreatorHandle() {
@@ -250,7 +251,9 @@ function getPostSeoMeta(post?: BlogPost | null): SeoMeta {
   const twitterCreatorHandle = getTwitterCreatorHandle();
   const fallbackTitle = `Blog | ${siteName}`;
   const fallbackDescription =
-    'This is a flexible blog starter that can be filled with Markdown content and prerendered into indexable pages.';
+    'Статьи Zubchek о гигиене полости рта: как чистить зубы, выбирать средства и следить за результатом.';
+  // Link preview used when a page/post has no image of its own.
+  const defaultOgImage = getAbsoluteUrl('/og-image.png');
 
   if (!post) {
     const fallbackUrl = getAbsoluteUrl('/blog/');
@@ -261,6 +264,7 @@ function getPostSeoMeta(post?: BlogPost | null): SeoMeta {
       siteName,
       ogTitle: fallbackTitle,
       ogDescription: fallbackDescription,
+      ogImage: defaultOgImage,
       ogImageAlt: siteName,
       ogType: 'website',
       twitterCard: 'summary_large_image',
@@ -280,7 +284,8 @@ function getPostSeoMeta(post?: BlogPost | null): SeoMeta {
     frontmatterStringList(post.frontmatter, 'keywords') ?? post.frontmatter.tags;
   const ogImage =
     frontmatterString(post.frontmatter, 'og_image') ??
-    frontmatterString(post.frontmatter, 'hero_image');
+    frontmatterString(post.frontmatter, 'hero_image') ??
+    defaultOgImage;
   const imageAlt =
     frontmatterString(post.frontmatter, 'og_image_alt') ??
     frontmatterString(post.frontmatter, 'twitter_image_alt') ??
