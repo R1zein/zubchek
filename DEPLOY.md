@@ -88,9 +88,15 @@ docker compose restart caddy
 Ключ Anthropic лежит только на сервере и просто пробрасывается дальше.
 
 ```
-APP_AI_BASE_URL=https://<worker>.workers.dev/<секретный-префикс>/v1
-APP_AI_MODEL=claude-sonnet-5
+APP_AI_BASE_URL=https://zubchek-ai.bdnj7916.workers.dev/<секретный-префикс>/v1
+APP_AI_MODEL=claude-sonnet-5-5
 ```
+
+Исходник релея — в [`relay/`](relay/) (Worker `zubchek-ai` на аккаунте
+Cloudflare `bdnj7916`). Префикс хранится как секрет Worker'а `RELAY_PREFIX`,
+локально — в git-игнорируемом `relay/.relay-prefix`, на сервере — в `.env`.
+Передеплой: `cd relay && npx wrangler deploy`. В октябре 2026 старый Worker
+пропал без исходника (ошибка Cloudflare 1042) — поэтому теперь он в репо.
 
 Если релей отвалится, AI **тихо деградирует**, а не падает: валидация фото
 становится разрешающей, детекция брекетов пропадает, рекомендации остаются

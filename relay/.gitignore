@@ -1,0 +1,4 @@
+.wrangler/
+node_modules/
+# The secret path prefix lives only here (and as a Worker secret / in the server .env).
+.relay-prefix

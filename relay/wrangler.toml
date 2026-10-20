@@ -1,0 +1,13 @@
+# Relay from the RU server to the Anthropic API.
+# api.anthropic.com returns 403 for Russian IPs, so the backend calls this
+# Worker instead and it forwards the request unchanged. A secret path prefix
+# (RELAY_PREFIX) keeps strangers from using it; the Anthropic API key is never
+# stored here — the backend sends it with every request.
+#
+# Deploy:   npx wrangler deploy
+# Prefix:   npx wrangler secret put RELAY_PREFIX
+# Backend:  APP_AI_BASE_URL=https://zubchek-ai.bdnj7916.workers.dev/<RELAY_PREFIX>/v1
+name = "zubchek-ai"
+main = "src/index.js"
+compatibility_date = "2026-09-01"
+workers_dev = true
