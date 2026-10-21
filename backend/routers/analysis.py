@@ -90,6 +90,21 @@ async def _history_owner(
     if not current_user:
         return None
     if not patient_id:
+        # A doctor uploading from the home page is testing someone else's
+        # mouth: the doctor's own earlier reports belong to other people, so
+        # there is nothing to compare with. (The home page sends no role
+        # header, so look the role up.)
+        try:
+            row = (await db.execute(
+                text("SELECT role FROM users_profiles WHERE user_id = :uid"),
+                {"uid": str(current_user.id)},
+            )).fetchone()
+        except Exception as e:
+            logger.warning(f"role lookup failed: {e}")
+            await _safe_rollback(db)
+            return None
+        if row and row[0] == "doctor":
+            return None
         return str(current_user.id)
     try:
         link = await db.execute(
