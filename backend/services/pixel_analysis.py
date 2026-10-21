@@ -87,6 +87,18 @@ MIN_BOX_TOOTH_SHARE = 0.15
 # clean enamel as long as some of the surface is clean.
 WB_REF_SHARE = 0.20
 WB_MAX_GAIN = 3.0
+# The same gains also brighten a dark photo so clean enamel lands at this
+# value: otherwise dim enamel stays below WHITE_V_MIN, counts as neither clean
+# nor stained, and only the stained pixels are left to make up the percentage.
+WB_TARGET = 235.0
+# Boosting blue to neutralise a warm cast also turns pink gum magenta, i.e.
+# "fresh plaque". Gum caught at the edge of a tooth frame is told apart on the
+# ORIGINAL photo instead: it is much redder (Lab a*) than this patient's enamel
+# while staying as yellow (b*) as enamel — dye pulls b* down, gum doesn't.
+# On a real photo (enamel reference a* ~14, b* ~18): clean gum a* 39-51 /
+# b* 19-27, blue-violet plaque a* 23-28 / b* -11..9, enamel a* 13-27.
+GUM_A_MARGIN = 18
+GUM_B_MARGIN = 10
 
 _BOX_YELLOW = (255, 215, 0)
 _BOX_GREEN = (0, 200, 80)
@@ -443,23 +455,36 @@ def _rgb_to_lab(rgb: np.ndarray) -> np.ndarray:
     return np.stack([116 * f[:, 1] - 16, 500 * (f[:, 0] - f[:, 1]), 200 * (f[:, 1] - f[:, 2])], axis=1)
 
 
-def _enamel_gains(rgb: np.ndarray, inside: np.ndarray) -> np.ndarray:
-    """Per-channel gains that turn this photo's clean enamel neutral white."""
+def _enamel_reference(rgb: np.ndarray, inside: np.ndarray) -> Optional[np.ndarray]:
+    """Median RGB of this photo's clean enamel, or None if it can't be told."""
     px = rgb[inside].astype(np.float32)
     px = px[(px.max(axis=1) >= 60) & (px.min(axis=1) < 245)]  # no gaps, no glare
     if len(px) < 200:
-        return np.ones(3, dtype=np.float32)
+        return None
     lab = _rgb_to_lab(px)
     cand = (lab[:, 0] >= np.percentile(lab[:, 0], 50)) & (lab[:, 1] <= np.percentile(lab[:, 1], 60))
     if cand.sum() < 50:
-        return np.ones(3, dtype=np.float32)
+        return None
     b = lab[cand, 2]
     ref = np.median(px[cand][b >= np.percentile(b, 100 * (1 - WB_REF_SHARE))], axis=0)
     # Enamel is never bluish; a bluish reference means stain was picked up
     # (almost fully stained teeth) — correcting it away would hide the plaque.
     if _rgb_to_lab(ref[None])[0, 2] < 0:
+        return None
+    return ref
+
+
+def _enamel_gains(rgb: np.ndarray, inside: np.ndarray) -> np.ndarray:
+    """Per-channel gains that turn this photo's clean enamel neutral white."""
+    ref = _enamel_reference(rgb, inside)
+    if ref is None:
         return np.ones(3, dtype=np.float32)
-    return np.clip(ref.max() / np.maximum(ref, 1.0), 1.0, WB_MAX_GAIN).astype(np.float32)
+    return _gains(ref)
+
+
+def _gains(ref: np.ndarray) -> np.ndarray:
+    """Gains that make enamel ``ref`` neutral and bright (never darken a channel)."""
+    return np.clip(WB_TARGET / np.maximum(ref, 1.0), 1.0, WB_MAX_GAIN).astype(np.float32)
 
 
 def analyze_teeth_in_boxes(
@@ -490,9 +515,18 @@ def analyze_teeth_in_boxes(
     owner = _frame_owners(frames, H, W)
 
     rgb = np.asarray(img)
-    gains = _enamel_gains(rgb, owner >= 0)
+    inside = owner >= 0
+    ref = _enamel_reference(rgb, inside)
+    gains = np.ones(3, dtype=np.float32) if ref is None else _gains(ref)
     balanced = Image.fromarray(np.clip(rgb * gains, 0, 255).astype(np.uint8), "RGB")
     labels = _classify(np.asarray(balanced.convert("HSV")))
+    if ref is not None:
+        # Gum at the frame edges: judged on the original colours (see GUM_A_MARGIN).
+        _, a_ref, b_ref = _rgb_to_lab(ref[None])[0]
+        lab = _rgb_to_lab(rgb[inside])
+        gum = np.zeros(labels.shape, dtype=bool)
+        gum[inside] = (lab[:, 1] > a_ref + GUM_A_MARGIN) & (lab[:, 2] > b_ref - GUM_B_MARGIN)
+        labels[gum & (labels != L_DARK)] = L_GUM
 
     keys = ("white", "purple", "blue", "light_blue", "gum_excluded", "dark_excluded", "other_excluded")
     lbls = (L_WHITE, L_PURPLE, L_BLUE, L_CYAN, L_GUM, L_DARK, L_OTHER)
