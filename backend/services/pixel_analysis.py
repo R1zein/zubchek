@@ -77,6 +77,17 @@ QUADRANT_TEETH = {
 # tooth as unreadable rather than scoring a few stray pixels.
 MIN_BOX_TOOTH_SHARE = 0.15
 
+# Enamel white balance (frame method). Photos are often shot under warm light
+# with a red cast from the gums: unbleached enamel then reads as orange (hue
+# ~5-25°, i.e. "gum") and the blue-violet dye as magenta (~320-350°, also
+# "gum"), so fixed hue bands throw away the whole tooth. Before classifying,
+# the photo is rebalanced so this patient's clean enamel becomes neutral white.
+# The enamel reference is the least-blue (highest Lab b*) share of the brighter,
+# non-red pixels inside the tooth frames — stain always lowers b*, so these are
+# clean enamel as long as some of the surface is clean.
+WB_REF_SHARE = 0.20
+WB_MAX_GAIN = 3.0
+
 _BOX_YELLOW = (255, 215, 0)
 _BOX_GREEN = (0, 200, 80)
 
@@ -422,6 +433,35 @@ def _framed_overlay_b64(img: Image.Image, labels: np.ndarray, owner: np.ndarray)
     return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
+def _rgb_to_lab(rgb: np.ndarray) -> np.ndarray:
+    """sRGB (0-255, shape (N, 3)) -> CIE Lab (D65)."""
+    c = rgb.astype(np.float64) / 255.0
+    c = np.where(c > 0.04045, ((c + 0.055) / 1.055) ** 2.4, c / 12.92)
+    m = np.array([[0.4124, 0.3576, 0.1805], [0.2126, 0.7152, 0.0722], [0.0193, 0.1192, 0.9505]])
+    xyz = c @ m.T / np.array([0.95047, 1.0, 1.08883])
+    f = np.where(xyz > 0.008856, np.cbrt(xyz), 7.787 * xyz + 16 / 116)
+    return np.stack([116 * f[:, 1] - 16, 500 * (f[:, 0] - f[:, 1]), 200 * (f[:, 1] - f[:, 2])], axis=1)
+
+
+def _enamel_gains(rgb: np.ndarray, inside: np.ndarray) -> np.ndarray:
+    """Per-channel gains that turn this photo's clean enamel neutral white."""
+    px = rgb[inside].astype(np.float32)
+    px = px[(px.max(axis=1) >= 60) & (px.min(axis=1) < 245)]  # no gaps, no glare
+    if len(px) < 200:
+        return np.ones(3, dtype=np.float32)
+    lab = _rgb_to_lab(px)
+    cand = (lab[:, 0] >= np.percentile(lab[:, 0], 50)) & (lab[:, 1] <= np.percentile(lab[:, 1], 60))
+    if cand.sum() < 50:
+        return np.ones(3, dtype=np.float32)
+    b = lab[cand, 2]
+    ref = np.median(px[cand][b >= np.percentile(b, 100 * (1 - WB_REF_SHARE))], axis=0)
+    # Enamel is never bluish; a bluish reference means stain was picked up
+    # (almost fully stained teeth) — correcting it away would hide the plaque.
+    if _rgb_to_lab(ref[None])[0, 2] < 0:
+        return np.ones(3, dtype=np.float32)
+    return np.clip(ref.max() / np.maximum(ref, 1.0), 1.0, WB_MAX_GAIN).astype(np.float32)
+
+
 def analyze_teeth_in_boxes(
     image_data_uri: str, tooth_boxes: dict, quadrant_boxes: Optional[dict] = None,
     debug: bool = True,
@@ -437,9 +477,7 @@ def analyze_teeth_in_boxes(
     tooth frames. Frames come back as normalised polygons.
     """
     img = _decode_image(image_data_uri)
-    hsv = np.asarray(img.convert("HSV"))
-    labels = _classify(hsv)
-    H, W = labels.shape
+    W, H = img.size
 
     tooth_pts: dict = {}
     frames: dict = {}
@@ -450,6 +488,11 @@ def analyze_teeth_in_boxes(
             tooth_pts[tid] = pts
             frames[tid] = fm
     owner = _frame_owners(frames, H, W)
+
+    rgb = np.asarray(img)
+    gains = _enamel_gains(rgb, owner >= 0)
+    balanced = Image.fromarray(np.clip(rgb * gains, 0, 255).astype(np.uint8), "RGB")
+    labels = _classify(np.asarray(balanced.convert("HSV")))
 
     keys = ("white", "purple", "blue", "light_blue", "gum_excluded", "dark_excluded", "other_excluded")
     lbls = (L_WHITE, L_PURPLE, L_BLUE, L_CYAN, L_GUM, L_DARK, L_OTHER)
@@ -503,7 +546,8 @@ def analyze_teeth_in_boxes(
         return [[round(min(max(x, 0.0), 1.0), 4), round(min(max(y, 0.0), 1.0), 4)] for x, y in pts]
 
     result = {
-        "method": "pixel_hsv_frames_v2",
+        "method": "pixel_hsv_frames_wb_v3",
+        "white_balance_gains": [round(float(g), 3) for g in gains],
         "tooth_pixels": tooth,
         "total_pixels": total,
         "tooth_coverage_percent": round(100 * tooth / total) if total else 0,
@@ -517,5 +561,5 @@ def analyze_teeth_in_boxes(
     }
     if debug:
         result["annotated_image"] = _annotated_b64(img, tooth_pts, quad_pts)
-        result["debug_image"] = _framed_overlay_b64(img, labels, owner)
+        result["debug_image"] = _framed_overlay_b64(balanced, labels, owner)
     return result
