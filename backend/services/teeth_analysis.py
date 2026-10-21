@@ -886,6 +886,28 @@ _LOCATE_PROMPT = """Ты размечаешь фото передних зубо
 {{"is_teeth": true, "quadrants": {{"1": [x1, y1, x2, y2], "2": [...], "3": [...], "4": [...]}}, "teeth": {{"1.1": [x1, y1, x2, y2], "1.2": [[x, y], [x, y], [x, y], [x, y]], "1.3": [...], "2.1": [...], "2.2": [...], "2.3": [...], "3.1": [...], "3.2": [...], "3.3": [...], "4.1": [...], "4.2": null, "4.3": [...]}}}}"""
 
 
+def _enhance_for_vision(data_uri: str) -> str:
+    """Make teeth, gum line and dye stand out for the model placing the frames.
+
+    Per-channel auto levels remove the warm/red cast of most mouth photos and
+    stretch contrast, so tooth borders and violet/blue staining are easier to
+    see. Geometry is unchanged, so the returned frames still fit the original.
+    Only the model sees this version; pixels are scored on the original photo.
+    """
+    try:
+        from PIL import Image, ImageEnhance, ImageOps
+
+        img = Image.open(io.BytesIO(base64.b64decode(data_uri.split(",", 1)[-1]))).convert("RGB")
+        img = Image.merge("RGB", [ImageOps.autocontrast(c, cutoff=1) for c in img.split()])
+        img = ImageEnhance.Contrast(img).enhance(1.1)
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        logger.warning(f"vision enhancement failed, sending the photo as is: {e}")
+        return data_uri
+
+
 def _parse_frame(value, w: int, h: int) -> list | None:
     """Model frame -> normalised polygon [(x, y), ...] in 0..1, or None.
 
@@ -932,7 +954,9 @@ async def locate_teeth(image_data_uri: str) -> dict | None:
     from PIL import Image
     from services.pixel_analysis import TOOTH_IDS, QUADRANT_TEETH
 
-    compressed = compress_image_data_uri(image_data_uri, max_size=_LOCATE_MAX_SIDE, quality=90)
+    compressed = _enhance_for_vision(
+        compress_image_data_uri(image_data_uri, max_size=_LOCATE_MAX_SIDE, quality=90)
+    )
     try:
         w, h = Image.open(io.BytesIO(base64.b64decode(compressed.split(",", 1)[-1]))).size
     except Exception as e:
