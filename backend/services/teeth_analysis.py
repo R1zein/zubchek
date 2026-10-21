@@ -23,14 +23,16 @@ def get_ai_model() -> str:
 def compress_image_data_uri(data_uri: str, max_size: int = 1024, quality: int = 70) -> str:
     """Compress a base64 data URI image to reduce size for AI processing."""
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
         
         if "," not in data_uri:
             return data_uri
         header, b64_data = data_uri.split(",", 1)
         image_bytes = base64.b64decode(b64_data)
         
-        img = Image.open(io.BytesIO(image_bytes))
+        # Bake in EXIF rotation (the re-encode below drops EXIF), so the model
+        # sees the photo upright, the way the browser and the pixel analyzer do.
+        img = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes)))
         
         width, height = img.size
         if width > max_size or height > max_size:
@@ -833,6 +835,183 @@ async def detect_ortho_and_recommend(
         "recommendations": [str(x).strip() for x in recs][:8],
         "recommendations_en": [str(x).strip() for x in recs_en][:8],
         "recommendations_source": source,
+    }
+
+
+# ---------------------------------------------------------------------------
+# Tooth localisation
+#
+# Before any pixel is counted, the vision model marks where each tooth is: a
+# yellow box per anterior tooth and a green box per quadrant. The pixel analyzer
+# then scores each yellow box on its own (see pixel_analysis.analyze_teeth_in_boxes).
+# ---------------------------------------------------------------------------
+
+# Long side of the image the model sees. Kept under the API's own downscale
+# limit so the pixel coordinates it returns refer to exactly this image.
+_LOCATE_MAX_SIDE = 1024
+
+# Fewer valid tooth frames than this means the answer is unreliable — fall back
+# to the whole-photo analysis instead of scoring the mouth from a few teeth.
+MIN_TOOTH_BOXES = 6
+
+# A single tooth never takes up more than this share of the photo; a bigger
+# frame swallowed several teeth or the whole mouth.
+_MAX_BOX_AREA = 0.25
+
+_LOCATE_PROMPT = """Ты размечаешь фото передних зубов пациента после нанесения индикатора налёта. Размер изображения: {w}×{h} пикселей. Координаты — целые пиксели этого изображения, начало в левом верхнем углу.
+
+Считай, что фото не зеркальное: левая сторона снимка — правая сторона пациента.
+
+Зубы у пациента могут быть кривыми: наклонёнными, повёрнутыми, выдвинутыми вперёд или назад, стоящими на разной высоте, налезающими друг на друга, с промежутками. Не подгоняй разметку под ровную сетку: рамки НЕ обязаны стоять ровно в ряд или друг под другом, могут быть разного размера и частично перекрываться. Каждую рамку ставь туда, где этот зуб находится на самом деле. Определяй зуб по форме (центральный резец — широкий, боковой — уже, клык — острый бугор), а не по порядковому месту в ряду.
+
+ШАГ 1. is_teeth: true, если на фото есть человеческие зубы. Если нет — верни is_teeth=false и пустые quadrants и teeth.
+
+ШАГ 2. Зелёные рамки — 4 квадранта, каждая охватывает три передних зуба своего квадранта. Граница между 1/2 и 3/4 — средняя линия между центральными резцами (она может быть не в центре снимка):
+- "1" — верхние зубы слева от средней линии на снимке (1.1, 1.2, 1.3);
+- "2" — верхние зубы справа от средней линии на снимке (2.1, 2.2, 2.3);
+- "3" — нижние зубы справа от средней линии на снимке (3.1, 3.2, 3.3);
+- "4" — нижние зубы слева от средней линии на снимке (4.1, 4.2, 4.3).
+Формат: прямоугольник [x1, y1, x2, y2].
+
+ШАГ 3. Жёлтые рамки — по одной на каждый из 12 зубов. .1 — центральный резец, .2 — боковой резец, .3 — клык. Премоляры и дальние зубы не размечай.
+- Рамка плотно охватывает видимую переднюю поверхность коронки ТОЛЬКО этого зуба: от края десны до режущего края, от одного межзубного промежутка до другого.
+- Ровно стоящий зуб — прямоугольник [x1, y1, x2, y2] (левый верхний и правый нижний угол).
+- Наклонённый или повёрнутый зуб — повёрнутая рамка вдоль оси зуба: 4 угла [[x, y], [x, y], [x, y], [x, y]] по порядку обхода. Так в рамку не попадут соседние зубы и десна.
+- Если зуб частично закрыт соседним (скученность), обведи только его видимую часть.
+- Окрашенный налёт (фиолетовый, синий, голубой, розовый — в том числе полоска у самой десны) — часть зуба, включай его в рамку.
+- Не включай десну, губы, соседние зубы и тёмную щель между челюстями.
+- Если зуб отсутствует или полностью закрыт — null.
+
+Ответь только валидным JSON без пояснений, например:
+{{"is_teeth": true, "quadrants": {{"1": [x1, y1, x2, y2], "2": [...], "3": [...], "4": [...]}}, "teeth": {{"1.1": [x1, y1, x2, y2], "1.2": [[x, y], [x, y], [x, y], [x, y]], "1.3": [...], "2.1": [...], "2.2": [...], "2.3": [...], "3.1": [...], "3.2": [...], "3.3": [...], "4.1": [...], "4.2": null, "4.3": [...]}}}}"""
+
+
+def _enhance_for_vision(data_uri: str) -> str:
+    """Cool the photo down to neutral enamel for the model placing the frames.
+
+    Mouth photos usually carry a warm/red cast that makes enamel look orange
+    and the violet/blue dye look like gum. The same enamel white balance the
+    pixel analyzer uses (estimated here over the whole photo, as no frames
+    exist yet) turns enamel white and the dye clearly violet, so tooth borders
+    and staining are easier to see. Geometry is unchanged, so the returned
+    frames still fit the original; pixels are scored on the original photo.
+    """
+    try:
+        import numpy as np
+        from PIL import Image
+        from services.pixel_analysis import _enamel_gains
+
+        img = Image.open(io.BytesIO(base64.b64decode(data_uri.split(",", 1)[-1]))).convert("RGB")
+        rgb = np.asarray(img)
+        gains = _enamel_gains(rgb, np.ones(rgb.shape[:2], dtype=bool))
+        img = Image.fromarray(np.clip(rgb * gains, 0, 255).astype(np.uint8), "RGB")
+        buf = io.BytesIO()
+        img.save(buf, format="JPEG", quality=90)
+        return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+    except Exception as e:
+        logger.warning(f"vision enhancement failed, sending the photo as is: {e}")
+        return data_uri
+
+
+def _parse_frame(value, w: int, h: int) -> list | None:
+    """Model frame -> normalised polygon [(x, y), ...] in 0..1, or None.
+
+    Accepts a box [x1, y1, x2, y2] or a polygon [[x, y], ...] (a rotated frame
+    for a tilted tooth), in pixels of the image the model saw.
+    """
+    if not isinstance(value, (list, tuple)):
+        return None
+    try:
+        if len(value) == 4 and all(isinstance(v, (int, float)) for v in value):
+            x0, y0, x1, y1 = (float(v) for v in value)
+            x0, x1 = sorted((x0, x1))
+            y0, y1 = sorted((y0, y1))
+            pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        else:
+            pts = [(float(p[0]), float(p[1])) for p in value]
+    except (TypeError, ValueError, IndexError):
+        return None
+    if len(pts) < 3:
+        return None
+    # Some answers come back already normalised (0..1) instead of in pixels.
+    if max(max(abs(x), abs(y)) for x, y in pts) > 1.0:
+        pts = [(x / w, y / h) for x, y in pts]
+    pts = [(min(max(x, 0.0), 1.0), min(max(y, 0.0), 1.0)) for x, y in pts]
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    if (max(xs) - min(xs)) * w < 4 or (max(ys) - min(ys)) * h < 4:
+        return None
+    return pts
+
+
+def _frame_area(pts: list) -> float:
+    """Polygon area (shoelace), in the same units as the points."""
+    return abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1]))) / 2
+
+
+async def locate_teeth(image_data_uri: str) -> dict | None:
+    """Ask the vision model for a yellow frame per tooth and a green one per quadrant.
+
+    Returns {"is_teeth", "teeth": {id: polygon|None}, "quadrants": {q: polygon|None},
+    "valid_teeth"} with polygons normalised to 0..1, or None when the model is
+    unreachable or its answer can't be parsed. Frames may be tilted and need
+    not line up — crooked teeth are placed where they actually are.
+    """
+    from PIL import Image
+    from services.pixel_analysis import TOOTH_IDS, QUADRANT_TEETH
+
+    compressed = _enhance_for_vision(
+        compress_image_data_uri(image_data_uri, max_size=_LOCATE_MAX_SIDE, quality=90)
+    )
+    try:
+        w, h = Image.open(io.BytesIO(base64.b64decode(compressed.split(",", 1)[-1]))).size
+    except Exception as e:
+        logger.warning(f"locate_teeth: can't read image size: {e}")
+        return None
+
+    request = GenTxtRequest(
+        messages=[ChatMessage(role="user", content=[
+            {"type": "text", "text": _LOCATE_PROMPT.format(w=w, h=h)},
+            {"type": "image_url", "image_url": {"url": compressed}},
+        ])],
+        model=get_ai_model(),
+        # Thinking shares this budget on current Claude models.
+        max_tokens=16000,
+    )
+
+    payload = None
+    service = AIHubService()
+    for attempt in (1, 2):
+        try:
+            response = await service.gentxt(request)
+            payload = json.loads(extract_json_block(response.content.strip()))
+            if not isinstance(payload, dict):
+                raise ValueError("AI answer is not a JSON object")
+            break
+        except Exception as e:
+            payload = None
+            logger.warning(f"locate_teeth AI attempt {attempt} failed: {e}")
+    if payload is None:
+        return None
+
+    raw_teeth = payload.get("teeth") if isinstance(payload.get("teeth"), dict) else {}
+    raw_quads = payload.get("quadrants") if isinstance(payload.get("quadrants"), dict) else {}
+    teeth = {}
+    for tid in TOOTH_IDS:
+        frame = _parse_frame(raw_teeth.get(tid), w, h)
+        if frame and _frame_area(frame) > _MAX_BOX_AREA:
+            logger.warning(f"locate_teeth: frame for {tid} too large, dropped: {frame}")
+            frame = None
+        teeth[tid] = frame
+    quadrants = {q: _parse_frame(raw_quads.get(q), w, h) for q in QUADRANT_TEETH}
+
+    valid = sum(1 for b in teeth.values() if b)
+    logger.info(f"locate_teeth: {valid}/12 tooth boxes, "
+                f"{sum(1 for b in quadrants.values() if b)}/4 quadrant boxes ({w}x{h})")
+    return {
+        "is_teeth": bool(payload.get("is_teeth", True)),
+        "teeth": teeth,
+        "quadrants": quadrants,
+        "valid_teeth": valid,
     }
 
 
