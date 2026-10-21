@@ -7,7 +7,6 @@ import { getSession, client } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
 import AppHeader from "@/components/AppHeader";
 import ProgressCard, { type Progress } from "@/components/ProgressCard";
-import TeethPhoto, { type Frame } from "@/components/TeethPhoto";
 import { useLanguage } from "@/contexts/LanguageContext";
 
 interface ColorPercentages {
@@ -45,8 +44,6 @@ interface AnalysisResult {
   risk_level?: string;
   hygiene_level?: string;
   teeth?: Record<string, ToothResult>;
-  tooth_boxes?: Record<string, Frame> | null;
-  quadrant_boxes?: Record<string, Frame> | null;
   recommendations?: string[];
   recommendations_en?: string[];
   orthodontic_detected?: boolean;
@@ -253,10 +250,10 @@ export default function Results() {
 
           {imageDataUri && (
             <div className="flex justify-center mb-4 sm:mb-6">
-              <TeethPhoto
+              <img
                 src={imageDataUri}
-                toothBoxes={analysisResult?.tooth_boxes}
-                quadrantBoxes={analysisResult?.quadrant_boxes}
+                alt="Teeth photo"
+                className="w-48 h-36 sm:w-64 sm:h-48 object-cover rounded-xl border border-gray-200 dark:border-gray-700"
               />
             </div>
           )}

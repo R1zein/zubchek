@@ -46,10 +46,6 @@ class AnalyzeResponse(BaseModel):
     risk_level: Optional[str] = None
     hygiene_level: Optional[str] = None
     teeth: Optional[dict] = None
-    quadrants: Optional[dict] = None  # per-quadrant colours/index (box method only)
-    # Yellow tooth boxes / green quadrant boxes, normalised [x0, y0, x1, y1] in 0..1
-    tooth_boxes: Optional[dict] = None
-    quadrant_boxes: Optional[dict] = None
     recommendations: Optional[list] = None
     recommendations_en: Optional[list] = None
     orthodontic_detected: bool = False
@@ -313,9 +309,6 @@ async def analyze_photo(
             risk_level=result["risk_level"],
             hygiene_level=result["hygiene_level"],
             teeth=result["teeth"],
-            quadrants=result["quadrants"],
-            tooth_boxes=result["tooth_boxes"],
-            quadrant_boxes=result["quadrant_boxes"],
             recommendations=recommendations,
             recommendations_en=recommendations_en,
             orthodontic_detected=result["orthodontic_detected"],
