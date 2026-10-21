@@ -887,19 +887,24 @@ _LOCATE_PROMPT = """Ты размечаешь фото передних зубо
 
 
 def _enhance_for_vision(data_uri: str) -> str:
-    """Make teeth, gum line and dye stand out for the model placing the frames.
+    """Cool the photo down to neutral enamel for the model placing the frames.
 
-    Per-channel auto levels remove the warm/red cast of most mouth photos and
-    stretch contrast, so tooth borders and violet/blue staining are easier to
-    see. Geometry is unchanged, so the returned frames still fit the original.
-    Only the model sees this version; pixels are scored on the original photo.
+    Mouth photos usually carry a warm/red cast that makes enamel look orange
+    and the violet/blue dye look like gum. The same enamel white balance the
+    pixel analyzer uses (estimated here over the whole photo, as no frames
+    exist yet) turns enamel white and the dye clearly violet, so tooth borders
+    and staining are easier to see. Geometry is unchanged, so the returned
+    frames still fit the original; pixels are scored on the original photo.
     """
     try:
-        from PIL import Image, ImageEnhance, ImageOps
+        import numpy as np
+        from PIL import Image
+        from services.pixel_analysis import _enamel_gains
 
         img = Image.open(io.BytesIO(base64.b64decode(data_uri.split(",", 1)[-1]))).convert("RGB")
-        img = Image.merge("RGB", [ImageOps.autocontrast(c, cutoff=1) for c in img.split()])
-        img = ImageEnhance.Contrast(img).enhance(1.1)
+        rgb = np.asarray(img)
+        gains = _enamel_gains(rgb, np.ones(rgb.shape[:2], dtype=bool))
+        img = Image.fromarray(np.clip(rgb * gains, 0, 255).astype(np.uint8), "RGB")
         buf = io.BytesIO()
         img.save(buf, format="JPEG", quality=90)
         return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
