@@ -12,7 +12,7 @@ interface TeethPhotoProps {
 }
 
 const YELLOW = "#ffd700";
-const RED = "#e61e1e";
+const GREEN = "#00c850";
 
 function toPoints(frame: Frame): number[][] {
   if (typeof frame[0] === "number") {
@@ -22,7 +22,7 @@ function toPoints(frame: Frame): number[][] {
   return frame as number[][];
 }
 
-/** The report photo with the analysed teeth framed: yellow per tooth, red per quadrant. */
+/** The report photo with the analysed teeth framed: yellow per tooth, green per quadrant. */
 export default function TeethPhoto({ src, toothBoxes, quadrantBoxes }: TeethPhotoProps) {
   const { lang } = useLanguage();
   const [size, setSize] = useState<{ w: number; h: number } | null>(null);
@@ -60,7 +60,7 @@ export default function TeethPhoto({ src, toothBoxes, quadrantBoxes }: TeethPhot
             aria-hidden="true"
           >
             {Object.entries(quadrantBoxes ?? {}).map(([q, f]) => (
-              <polygon key={`q${q}`} points={points(f)} fill="none" stroke={RED} strokeWidth={stroke * 1.2} />
+              <polygon key={`q${q}`} points={points(f)} fill="none" stroke={GREEN} strokeWidth={stroke * 1.2} />
             ))}
             {Object.entries(toothBoxes).map(([id, f]) => {
               const pts = toPoints(f);
@@ -91,8 +91,8 @@ export default function TeethPhoto({ src, toothBoxes, quadrantBoxes }: TeethPhot
       </div>
       <figcaption className="mt-1.5 text-xs text-center text-gray-500 dark:text-gray-400">
         {lang === "ru"
-          ? "Жёлтые рамки — проанализированные зубы, красные — квадранты"
-          : "Yellow frames — analysed teeth, red — quadrants"}
+          ? "Жёлтые рамки — проанализированные зубы, зелёные — квадранты"
+          : "Yellow frames — analysed teeth, green — quadrants"}
       </figcaption>
     </figure>
   );

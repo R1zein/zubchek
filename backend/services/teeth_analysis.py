@@ -842,7 +842,7 @@ async def detect_ortho_and_recommend(
 # Tooth localisation
 #
 # Before any pixel is counted, the vision model marks where each tooth is: a
-# yellow box per anterior tooth and a red box per quadrant. The pixel analyzer
+# yellow box per anterior tooth and a green box per quadrant. The pixel analyzer
 # then scores each yellow box on its own (see pixel_analysis.analyze_teeth_in_boxes).
 # ---------------------------------------------------------------------------
 
@@ -866,7 +866,7 @@ _LOCATE_PROMPT = """Ты размечаешь фото передних зубо
 
 ШАГ 1. is_teeth: true, если на фото есть человеческие зубы. Если нет — верни is_teeth=false и пустые quadrants и teeth.
 
-ШАГ 2. Красные рамки — 4 квадранта, каждая охватывает три передних зуба своего квадранта. Граница между 1/2 и 3/4 — средняя линия между центральными резцами (она может быть не в центре снимка):
+ШАГ 2. Зелёные рамки — 4 квадранта, каждая охватывает три передних зуба своего квадранта. Граница между 1/2 и 3/4 — средняя линия между центральными резцами (она может быть не в центре снимка):
 - "1" — верхние зубы слева от средней линии на снимке (1.1, 1.2, 1.3);
 - "2" — верхние зубы справа от средней линии на снимке (2.1, 2.2, 2.3);
 - "3" — нижние зубы справа от средней линии на снимке (3.1, 3.2, 3.3);
@@ -922,7 +922,7 @@ def _frame_area(pts: list) -> float:
 
 
 async def locate_teeth(image_data_uri: str) -> dict | None:
-    """Ask the vision model for a yellow frame per tooth and a red one per quadrant.
+    """Ask the vision model for a yellow frame per tooth and a green one per quadrant.
 
     Returns {"is_teeth", "teeth": {id: polygon|None}, "quadrants": {q: polygon|None},
     "valid_teeth"} with polygons normalised to 0..1, or None when the model is

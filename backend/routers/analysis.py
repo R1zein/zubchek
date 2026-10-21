@@ -47,7 +47,7 @@ class AnalyzeResponse(BaseModel):
     hygiene_level: Optional[str] = None
     teeth: Optional[dict] = None
     quadrants: Optional[dict] = None  # per-quadrant colours/index (box method only)
-    # Yellow tooth boxes / red quadrant boxes, normalised [x0, y0, x1, y1] in 0..1
+    # Yellow tooth boxes / green quadrant boxes, normalised [x0, y0, x1, y1] in 0..1
     tooth_boxes: Optional[dict] = None
     quadrant_boxes: Optional[dict] = None
     recommendations: Optional[list] = None
@@ -148,7 +148,7 @@ async def analyze_photo(
     """Analyze a teeth photo — deterministic pixel-level Z-Index.
 
     The vision model first places a yellow box on each of the 12 anterior
-    teeth (red boxes for the quadrants); colour percentages and the index are
+    teeth (green boxes for the quadrants); colour percentages and the index are
     then computed from the pixels inside each tooth box separately. When the
     model can't place the boxes, the whole-photo pixel analysis is used. The
     LLM also writes the text recommendations (with a rule-based fallback).
@@ -187,7 +187,7 @@ async def analyze_photo(
                     message="На фото не обнаружены зубы. Пожалуйста, сфотографируйте зубы крупным планом.",
                 )
 
-            # 2b. The model boxes each tooth (yellow) and quadrant (red); then
+            # 2b. The model boxes each tooth (yellow) and quadrant (green); then
             #     every tooth box is classified on its own, so nothing outside
             #     the teeth (walls, retractors, lips) counts as clean enamel.
             loc = await locate_teeth(data.image)
@@ -340,7 +340,7 @@ async def analyze_pixels(data: AnalyzeRequest, debug: bool = Query(True), boxes:
     Calibration/debug path — computes exact color-area percentages and (when
     debug=true) returns a color-coded mask overlay. With boxes=true the vision
     model places the tooth/quadrant boxes first and the response also carries
-    ``annotated_image`` (yellow tooth boxes, red quadrants); boxes=false skips
+    ``annotated_image`` (yellow tooth boxes, green quadrants); boxes=false skips
     the LLM. Does NOT save a report.
     """
     if not data.image:

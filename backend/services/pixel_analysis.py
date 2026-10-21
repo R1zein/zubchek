@@ -78,7 +78,7 @@ QUADRANT_TEETH = {
 MIN_BOX_TOOTH_SHARE = 0.15
 
 _BOX_YELLOW = (255, 215, 0)
-_BOX_RED = (230, 30, 30)
+_BOX_GREEN = (0, 200, 80)
 
 
 def _decode_image(image_data_uri: str) -> Image.Image:
@@ -321,7 +321,7 @@ def analyze_teeth_pixels(image_data_uri: str, debug: bool = True) -> dict:
 # --- Per-tooth analysis inside AI-placed frames ------------------------------
 #
 # The vision model first draws a yellow frame around each of the 12 anterior
-# teeth (and a red frame around each quadrant). Only pixels inside the yellow
+# teeth (and a green frame around each quadrant). Only pixels inside the yellow
 # frames are classified and counted, tooth by tooth, so white walls, cheek
 # retractors, lip highlights and side teeth outside the frames can no longer
 # pass for clean enamel and dilute the index.
@@ -391,15 +391,15 @@ def _frame_owners(frames: dict, H: int, W: int) -> np.ndarray:
 
 
 def _annotated_b64(img: Image.Image, tooth_pts: dict, quad_pts: dict) -> str:
-    """The photo with red quadrant frames and yellow, numbered tooth frames."""
+    """The photo with green quadrant frames and yellow, numbered tooth frames."""
     out = img.copy()
     draw = ImageDraw.Draw(out)
     W, H = out.size
     lw = max(2, max(W, H) // 300)
     for q, pts in quad_pts.items():
         xy = [(x * W, y * H) for x, y in pts]
-        draw.polygon(xy, outline=_BOX_RED, width=lw)
-        draw.text((min(p[0] for p in xy) + lw, max(min(p[1] for p in xy) - 12, 0)), f"Q{q}", fill=_BOX_RED)
+        draw.polygon(xy, outline=_BOX_GREEN, width=lw)
+        draw.text((min(p[0] for p in xy) + lw, max(min(p[1] for p in xy) - 12, 0)), f"Q{q}", fill=_BOX_GREEN)
     for tid, pts in tooth_pts.items():
         xy = [(x * W, y * H) for x, y in pts]
         draw.polygon(xy, outline=_BOX_YELLOW, width=lw)
@@ -430,7 +430,7 @@ def analyze_teeth_in_boxes(
 
     ``tooth_boxes`` maps FDI ids ("1.1" .. "4.3") to normalised frames in
     0..1 — a polygon [[x, y], ...] or a box [x0, y0, x1, y1] — or None for a
-    missing / hidden tooth; ``quadrant_boxes`` maps "1".."4" to the red
+    missing / hidden tooth; ``quadrant_boxes`` maps "1".."4" to the green
     quadrant frames the same way. Returns the same shape as
     ``analyze_teeth_pixels``; overall percentages are the sum of the
     per-tooth pixel counts, so they only ever include surface inside the
@@ -479,7 +479,7 @@ def analyze_teeth_in_boxes(
 
     color_pct = {key: pct(counts[key]) for key in ("white", "purple", "blue", "light_blue")}
 
-    # Red quadrant frames: from the model when it gave one, else the bounding
+    # Green quadrant frames: from the model when it gave one, else the bounding
     # rectangle of that quadrant's tooth frames. Stats are summed from its teeth.
     quad_pts: dict = {}
     quadrants: dict = {}
