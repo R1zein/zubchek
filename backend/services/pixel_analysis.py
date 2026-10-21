@@ -19,7 +19,7 @@ import logging
 from typing import Optional
 
 import numpy as np
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageOps
 
 logger = logging.getLogger(__name__)
 
@@ -86,6 +86,10 @@ def _decode_image(image_data_uri: str) -> Image.Image:
         image_data_uri = image_data_uri.split(",", 1)[1]
     raw = base64.b64decode(image_data_uri)
     img = Image.open(io.BytesIO(raw))
+    # Phone photos often store rotation in EXIF; the browser applies it when
+    # showing the photo, so apply it here too or the analysis (and the tooth
+    # boxes drawn over the photo) would see the mouth sideways.
+    img = ImageOps.exif_transpose(img)
     if img.mode != "RGB":
         img = img.convert("RGB")
     w, h = img.size
@@ -314,71 +318,101 @@ def analyze_teeth_pixels(image_data_uri: str, debug: bool = True) -> dict:
     return result
 
 
-# --- Per-tooth analysis inside AI-placed boxes -------------------------------
+# --- Per-tooth analysis inside AI-placed frames ------------------------------
 #
-# The vision model first draws a yellow box around each of the 12 anterior
-# teeth (and a red box around each quadrant). Only pixels inside the yellow
-# boxes are classified and counted, tooth by tooth, so white walls, cheek
-# retractors, lip highlights and side teeth outside the boxes can no longer
+# The vision model first draws a yellow frame around each of the 12 anterior
+# teeth (and a red frame around each quadrant). Only pixels inside the yellow
+# frames are classified and counted, tooth by tooth, so white walls, cheek
+# retractors, lip highlights and side teeth outside the frames can no longer
 # pass for clean enamel and dilute the index.
+#
+# Teeth are often crooked — tilted, rotated, crowded, at different heights —
+# so frames are polygons, not a grid: an upright tooth gets a plain rectangle,
+# a tilted one a rotated quadrilateral that follows its axis. Nothing here
+# assumes frames line up in rows or columns.
 
 
-def _box_to_px(box, W: int, H: int) -> Optional[tuple]:
-    """Normalised (x0, y0, x1, y1) in 0..1 -> clamped pixel box, or None."""
-    if not box:
+def _frame_points(frame) -> Optional[list]:
+    """Normalised frame -> list of (x, y) points in 0..1, or None.
+
+    Accepts a polygon [[x, y], ...] (3+ points) or an axis-aligned box
+    [x0, y0, x1, y1].
+    """
+    if not frame:
         return None
-    x0 = min(max(int(round(box[0] * W)), 0), W)
-    y0 = min(max(int(round(box[1] * H)), 0), H)
-    x1 = min(max(int(round(box[2] * W)), 0), W)
-    y1 = min(max(int(round(box[3] * H)), 0), H)
+    try:
+        if all(isinstance(v, (int, float)) for v in frame) and len(frame) == 4:
+            x0, y0, x1, y1 = (float(v) for v in frame)
+            pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        else:
+            pts = [(float(p[0]), float(p[1])) for p in frame]
+    except (TypeError, ValueError, IndexError):
+        return None
+    return pts if len(pts) >= 3 else None
+
+
+def _frame_mask(points: list, W: int, H: int) -> Optional[tuple]:
+    """Rasterise a normalised polygon: (x0, y0, mask) over its bounding rect."""
+    px = [(min(max(x, 0.0), 1.0) * W, min(max(y, 0.0), 1.0) * H) for x, y in points]
+    x0 = int(np.floor(min(p[0] for p in px)))
+    y0 = int(np.floor(min(p[1] for p in px)))
+    x1 = int(np.ceil(max(p[0] for p in px)))
+    y1 = int(np.ceil(max(p[1] for p in px)))
     if x1 - x0 < 3 or y1 - y0 < 3:
         return None
-    return x0, y0, x1, y1
+    m = Image.new("L", (x1 - x0, y1 - y0), 0)
+    ImageDraw.Draw(m).polygon([(x - x0, y - y0) for x, y in px], fill=1)
+    mask = np.asarray(m, dtype=bool)
+    return (x0, y0, mask) if mask.sum() >= 9 else None
 
 
-def _box_owners(px_boxes: dict, H: int, W: int) -> np.ndarray:
-    """Index (into ``list(px_boxes)``) of the box owning each pixel, -1 outside.
+def _frame_owners(frames: dict, H: int, W: int) -> np.ndarray:
+    """Index (into ``list(frames)``) of the frame owning each pixel, -1 outside.
 
-    Neighbouring boxes overlap at the interdental gaps; a pixel in the overlap
-    goes to the box whose centre it is closest to (relative to box size), so
-    every pixel is counted for exactly one tooth.
+    Frames of crowded or overlapping teeth intersect; a pixel claimed by
+    several frames goes to the one whose centroid is nearest, relative to that
+    frame's size, so every pixel is counted for exactly one tooth.
     """
     owner = np.full((H, W), -1, dtype=np.int8)
     best = np.full((H, W), np.inf, dtype=np.float32)
-    for k, (x0, y0, x1, y1) in enumerate(px_boxes.values()):
-        cx, cy = (x0 + x1 - 1) / 2, (y0 + y1 - 1) / 2
-        hw, hh = max((x1 - x0) / 2, 1.0), max((y1 - y0) / 2, 1.0)
-        yy, xx = np.mgrid[y0:y1, x0:x1]
-        d = np.maximum(np.abs(xx - cx) / hw, np.abs(yy - cy) / hh)
-        sub_best = best[y0:y1, x0:x1]
+    for k, (x0, y0, mask) in enumerate(frames.values()):
+        h, w = mask.shape
+        ys, xs = np.nonzero(mask)
+        cy, cx = ys.mean(), xs.mean()
+        scale = max(np.sqrt(mask.sum()), 1.0)
+        yy, xx = np.mgrid[0:h, 0:w]
+        d = (np.hypot(xx - cx, yy - cy) / scale).astype(np.float32)
+        d[~mask] = np.inf
+        sub_best = best[y0:y0 + h, x0:x0 + w]
         take = d < sub_best
         sub_best[take] = d[take]
-        owner[y0:y1, x0:x1][take] = k
+        owner[y0:y0 + h, x0:x0 + w][take] = k
     return owner
 
 
-def _annotated_b64(img: Image.Image, px_boxes: dict, px_quadrants: dict) -> str:
-    """The photo with red quadrant boxes and yellow, numbered tooth boxes."""
+def _annotated_b64(img: Image.Image, tooth_pts: dict, quad_pts: dict) -> str:
+    """The photo with red quadrant frames and yellow, numbered tooth frames."""
     out = img.copy()
     draw = ImageDraw.Draw(out)
-    lw = max(2, max(out.size) // 300)
-    pad = 2 * lw  # red frames sit just outside the yellow ones so both show
     W, H = out.size
-    for q, (x0, y0, x1, y1) in px_quadrants.items():
-        x0, y0 = max(x0 - pad, 0), max(y0 - pad, 0)
-        x1, y1 = min(x1 + pad, W), min(y1 + pad, H)
-        draw.rectangle([x0, y0, x1 - 1, y1 - 1], outline=_BOX_RED, width=lw)
-        draw.text((x0 + lw + 1, max(y0 - 12, 0)), f"Q{q}", fill=_BOX_RED)
-    for tid, (x0, y0, x1, y1) in px_boxes.items():
-        draw.rectangle([x0, y0, x1 - 1, y1 - 1], outline=_BOX_YELLOW, width=lw)
-        draw.text((x0 + lw + 1, y0 + lw + 1), tid, fill=_BOX_YELLOW)
+    lw = max(2, max(W, H) // 300)
+    for q, pts in quad_pts.items():
+        xy = [(x * W, y * H) for x, y in pts]
+        draw.polygon(xy, outline=_BOX_RED, width=lw)
+        draw.text((min(p[0] for p in xy) + lw, max(min(p[1] for p in xy) - 12, 0)), f"Q{q}", fill=_BOX_RED)
+    for tid, pts in tooth_pts.items():
+        xy = [(x * W, y * H) for x, y in pts]
+        draw.polygon(xy, outline=_BOX_YELLOW, width=lw)
+        cx = sum(p[0] for p in xy) / len(xy)
+        cy = sum(p[1] for p in xy) / len(xy)
+        draw.text((cx - 8, cy - 5), tid, fill=_BOX_YELLOW)
     buf = io.BytesIO()
     out.save(buf, format="JPEG", quality=85)
     return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
-def _boxed_overlay_b64(img: Image.Image, labels: np.ndarray, owner: np.ndarray) -> str:
-    """Label colours inside the tooth boxes, dimmed photo outside (not counted)."""
+def _framed_overlay_b64(img: Image.Image, labels: np.ndarray, owner: np.ndarray) -> str:
+    """Label colours inside the tooth frames, dimmed photo outside (not counted)."""
     out = (np.asarray(img, dtype=np.uint16) // 3).astype(np.uint8)
     inside = owner >= 0
     for lbl, color in _OVERLAY_COLORS.items():
@@ -392,35 +426,40 @@ def analyze_teeth_in_boxes(
     image_data_uri: str, tooth_boxes: dict, quadrant_boxes: Optional[dict] = None,
     debug: bool = True,
 ) -> dict:
-    """Classify pixels tooth by tooth, inside the yellow box of each tooth.
+    """Classify pixels tooth by tooth, inside the yellow frame of each tooth.
 
-    ``tooth_boxes`` maps FDI ids ("1.1" .. "4.3") to normalised
-    (x0, y0, x1, y1) boxes in 0..1, or None for a missing / hidden tooth;
-    ``quadrant_boxes`` maps "1".."4" to the red quadrant boxes the same way.
-    Returns the same shape as ``analyze_teeth_pixels``; overall percentages
-    are the sum of the per-tooth pixel counts, so they only ever include
-    surface inside the tooth boxes.
+    ``tooth_boxes`` maps FDI ids ("1.1" .. "4.3") to normalised frames in
+    0..1 — a polygon [[x, y], ...] or a box [x0, y0, x1, y1] — or None for a
+    missing / hidden tooth; ``quadrant_boxes`` maps "1".."4" to the red
+    quadrant frames the same way. Returns the same shape as
+    ``analyze_teeth_pixels``; overall percentages are the sum of the
+    per-tooth pixel counts, so they only ever include surface inside the
+    tooth frames. Frames come back as normalised polygons.
     """
     img = _decode_image(image_data_uri)
     hsv = np.asarray(img.convert("HSV"))
     labels = _classify(hsv)
     H, W = labels.shape
 
-    px_boxes = {}
+    tooth_pts: dict = {}
+    frames: dict = {}
     for tid in TOOTH_IDS:
-        b = _box_to_px((tooth_boxes or {}).get(tid), W, H)
-        if b:
-            px_boxes[tid] = b
-    owner = _box_owners(px_boxes, H, W)
+        pts = _frame_points((tooth_boxes or {}).get(tid))
+        fm = _frame_mask(pts, W, H) if pts else None
+        if fm:
+            tooth_pts[tid] = pts
+            frames[tid] = fm
+    owner = _frame_owners(frames, H, W)
 
     keys = ("white", "purple", "blue", "light_blue", "gum_excluded", "dark_excluded", "other_excluded")
     lbls = (L_WHITE, L_PURPLE, L_BLUE, L_CYAN, L_GUM, L_DARK, L_OTHER)
     counts = dict.fromkeys(keys, 0)
     tooth_counts: dict = {}
     teeth: dict = {}
-    for k, (tid, (x0, y0, x1, y1)) in enumerate(px_boxes.items()):
-        mine = owner[y0:y1, x0:x1] == k
-        sub = labels[y0:y1, x0:x1][mine]
+    for k, (tid, (x0, y0, mask)) in enumerate(frames.items()):
+        h, w = mask.shape
+        mine = owner[y0:y0 + h, x0:x0 + w] == k
+        sub = labels[y0:y0 + h, x0:x0 + w][mine]
         c = {key: int(np.count_nonzero(sub == lbl)) for key, lbl in zip(keys, lbls)}
         tot = c["white"] + c["purple"] + c["blue"] + c["light_blue"]
         if tot < max(50, MIN_BOX_TOOTH_SHARE * sub.size):
@@ -440,18 +479,19 @@ def analyze_teeth_in_boxes(
 
     color_pct = {key: pct(counts[key]) for key in ("white", "purple", "blue", "light_blue")}
 
-    # Red quadrant boxes: from the model when it gave one, else the union of
-    # that quadrant's tooth boxes. Quadrant stats are summed from its teeth.
-    px_quadrants: dict = {}
+    # Red quadrant frames: from the model when it gave one, else the bounding
+    # rectangle of that quadrant's tooth frames. Stats are summed from its teeth.
+    quad_pts: dict = {}
     quadrants: dict = {}
     for q, ids in QUADRANT_TEETH.items():
-        qb = _box_to_px((quadrant_boxes or {}).get(q), W, H)
-        own = [px_boxes[t] for t in ids if t in px_boxes]
-        if not qb and own:
-            qb = (min(b[0] for b in own), min(b[1] for b in own),
-                  max(b[2] for b in own), max(b[3] for b in own))
-        if qb:
-            px_quadrants[q] = qb
+        pts = _frame_points((quadrant_boxes or {}).get(q))
+        own = [p for t in ids if t in tooth_pts for p in tooth_pts[t]]
+        if not pts and own:
+            x0, y0 = min(p[0] for p in own), min(p[1] for p in own)
+            x1, y1 = max(p[0] for p in own), max(p[1] for p in own)
+            pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        if pts:
+            quad_pts[q] = pts
         qc = [tooth_counts[t] for t in ids if t in tooth_counts]
         if qc:
             quadrants[q] = _tooth_stats(*(sum(c[key] for c in qc)
@@ -459,11 +499,11 @@ def analyze_teeth_in_boxes(
         else:
             quadrants[q] = _missing_tooth()
 
-    def norm(b) -> list:
-        return [round(b[0] / W, 4), round(b[1] / H, 4), round(b[2] / W, 4), round(b[3] / H, 4)]
+    def norm(pts) -> list:
+        return [[round(min(max(x, 0.0), 1.0), 4), round(min(max(y, 0.0), 1.0), 4)] for x, y in pts]
 
     result = {
-        "method": "pixel_hsv_boxes_v2",
+        "method": "pixel_hsv_frames_v2",
         "tooth_pixels": tooth,
         "total_pixels": total,
         "tooth_coverage_percent": round(100 * tooth / total) if total else 0,
@@ -472,10 +512,10 @@ def analyze_teeth_in_boxes(
         "stained_area_percent": color_pct["purple"] + color_pct["blue"] + color_pct["light_blue"],
         "teeth": teeth,
         "quadrants": quadrants,
-        "tooth_boxes": {tid: norm(b) for tid, b in px_boxes.items()},
-        "quadrant_boxes": {q: norm(b) for q, b in px_quadrants.items()},
+        "tooth_boxes": {tid: norm(p) for tid, p in tooth_pts.items()},
+        "quadrant_boxes": {q: norm(p) for q, p in quad_pts.items()},
     }
     if debug:
-        result["annotated_image"] = _annotated_b64(img, px_boxes, px_quadrants)
-        result["debug_image"] = _boxed_overlay_b64(img, labels, owner)
+        result["annotated_image"] = _annotated_b64(img, tooth_pts, quad_pts)
+        result["debug_image"] = _framed_overlay_b64(img, labels, owner)
     return result

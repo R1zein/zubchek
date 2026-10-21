@@ -23,14 +23,16 @@ def get_ai_model() -> str:
 def compress_image_data_uri(data_uri: str, max_size: int = 1024, quality: int = 70) -> str:
     """Compress a base64 data URI image to reduce size for AI processing."""
     try:
-        from PIL import Image
+        from PIL import Image, ImageOps
         
         if "," not in data_uri:
             return data_uri
         header, b64_data = data_uri.split(",", 1)
         image_bytes = base64.b64decode(b64_data)
         
-        img = Image.open(io.BytesIO(image_bytes))
+        # Bake in EXIF rotation (the re-encode below drops EXIF), so the model
+        # sees the photo upright, the way the browser and the pixel analyzer do.
+        img = ImageOps.exif_transpose(Image.open(io.BytesIO(image_bytes)))
         
         width, height = img.size
         if width > max_size or height > max_size:
@@ -848,60 +850,84 @@ async def detect_ortho_and_recommend(
 # limit so the pixel coordinates it returns refer to exactly this image.
 _LOCATE_MAX_SIDE = 1024
 
-# Fewer valid tooth boxes than this means the answer is unreliable — fall back
+# Fewer valid tooth frames than this means the answer is unreliable — fall back
 # to the whole-photo analysis instead of scoring the mouth from a few teeth.
 MIN_TOOTH_BOXES = 6
 
-# A single tooth never takes up more than this share of the frame; a bigger
-# box swallowed several teeth or the whole mouth.
+# A single tooth never takes up more than this share of the photo; a bigger
+# frame swallowed several teeth or the whole mouth.
 _MAX_BOX_AREA = 0.25
 
-_LOCATE_PROMPT = """Ты размечаешь фото передних зубов пациента после нанесения индикатора налёта. Размер изображения: {w}×{h} пикселей. Координаты — целые пиксели этого изображения, начало в левом верхнем углу, рамка [x1, y1, x2, y2] (левый верхний и правый нижний угол).
+_LOCATE_PROMPT = """Ты размечаешь фото передних зубов пациента после нанесения индикатора налёта. Размер изображения: {w}×{h} пикселей. Координаты — целые пиксели этого изображения, начало в левом верхнем углу.
 
 Считай, что фото не зеркальное: левая сторона снимка — правая сторона пациента.
 
+Зубы у пациента могут быть кривыми: наклонёнными, повёрнутыми, выдвинутыми вперёд или назад, стоящими на разной высоте, налезающими друг на друга, с промежутками. Не подгоняй разметку под ровную сетку: рамки НЕ обязаны стоять ровно в ряд или друг под другом, могут быть разного размера и частично перекрываться. Каждую рамку ставь туда, где этот зуб находится на самом деле. Определяй зуб по форме (центральный резец — широкий, боковой — уже, клык — острый бугор), а не по порядковому месту в ряду.
+
 ШАГ 1. is_teeth: true, если на фото есть человеческие зубы. Если нет — верни is_teeth=false и пустые quadrants и teeth.
 
-ШАГ 2. Красные рамки — 4 квадранта, каждая охватывает три передних зуба своего квадранта:
-- "1" — верхние зубы в левой половине снимка (1.1, 1.2, 1.3);
-- "2" — верхние зубы в правой половине снимка (2.1, 2.2, 2.3);
-- "3" — нижние зубы в правой половине снимка (3.1, 3.2, 3.3);
-- "4" — нижние зубы в левой половине снимка (4.1, 4.2, 4.3).
+ШАГ 2. Красные рамки — 4 квадранта, каждая охватывает три передних зуба своего квадранта. Граница между 1/2 и 3/4 — средняя линия между центральными резцами (она может быть не в центре снимка):
+- "1" — верхние зубы слева от средней линии на снимке (1.1, 1.2, 1.3);
+- "2" — верхние зубы справа от средней линии на снимке (2.1, 2.2, 2.3);
+- "3" — нижние зубы справа от средней линии на снимке (3.1, 3.2, 3.3);
+- "4" — нижние зубы слева от средней линии на снимке (4.1, 4.2, 4.3).
+Формат: прямоугольник [x1, y1, x2, y2].
 
-ШАГ 3. Жёлтые рамки — по одной на каждый из 12 зубов. .1 — центральный резец (у средней линии), .2 — боковой резец, .3 — клык. Премоляры и дальние зубы не размечай.
-- Рамка плотно охватывает видимую переднюю поверхность коронки ТОЛЬКО этого зуба: по высоте от края десны до режущего края, по ширине от одного межзубного промежутка до другого.
+ШАГ 3. Жёлтые рамки — по одной на каждый из 12 зубов. .1 — центральный резец, .2 — боковой резец, .3 — клык. Премоляры и дальние зубы не размечай.
+- Рамка плотно охватывает видимую переднюю поверхность коронки ТОЛЬКО этого зуба: от края десны до режущего края, от одного межзубного промежутка до другого.
+- Ровно стоящий зуб — прямоугольник [x1, y1, x2, y2] (левый верхний и правый нижний угол).
+- Наклонённый или повёрнутый зуб — повёрнутая рамка вдоль оси зуба: 4 угла [[x, y], [x, y], [x, y], [x, y]] по порядку обхода. Так в рамку не попадут соседние зубы и десна.
+- Если зуб частично закрыт соседним (скученность), обведи только его видимую часть.
 - Окрашенный налёт (фиолетовый, синий, голубой, розовый — в том числе полоска у самой десны) — часть зуба, включай его в рамку.
 - Не включай десну, губы, соседние зубы и тёмную щель между челюстями.
 - Если зуб отсутствует или полностью закрыт — null.
 
-Ответь только валидным JSON без пояснений:
-{{"is_teeth": true, "quadrants": {{"1": [x1, y1, x2, y2], "2": [...], "3": [...], "4": [...]}}, "teeth": {{"1.1": [x1, y1, x2, y2], "1.2": [...], "1.3": [...], "2.1": [...], "2.2": [...], "2.3": [...], "3.1": [...], "3.2": [...], "3.3": [...], "4.1": [...], "4.2": [...], "4.3": [...]}}}}"""
+Ответь только валидным JSON без пояснений, например:
+{{"is_teeth": true, "quadrants": {{"1": [x1, y1, x2, y2], "2": [...], "3": [...], "4": [...]}}, "teeth": {{"1.1": [x1, y1, x2, y2], "1.2": [[x, y], [x, y], [x, y], [x, y]], "1.3": [...], "2.1": [...], "2.2": [...], "2.3": [...], "3.1": [...], "3.2": [...], "3.3": [...], "4.1": [...], "4.2": null, "4.3": [...]}}}}"""
 
 
-def _parse_box(value, w: int, h: int) -> tuple | None:
-    """Model box [x1, y1, x2, y2] in pixels -> normalised 0..1 box, or None."""
-    if not isinstance(value, (list, tuple)) or len(value) != 4:
+def _parse_frame(value, w: int, h: int) -> list | None:
+    """Model frame -> normalised polygon [(x, y), ...] in 0..1, or None.
+
+    Accepts a box [x1, y1, x2, y2] or a polygon [[x, y], ...] (a rotated frame
+    for a tilted tooth), in pixels of the image the model saw.
+    """
+    if not isinstance(value, (list, tuple)):
         return None
     try:
-        x0, y0, x1, y1 = (float(v) for v in value)
-    except (TypeError, ValueError):
+        if len(value) == 4 and all(isinstance(v, (int, float)) for v in value):
+            x0, y0, x1, y1 = (float(v) for v in value)
+            x0, x1 = sorted((x0, x1))
+            y0, y1 = sorted((y0, y1))
+            pts = [(x0, y0), (x1, y0), (x1, y1), (x0, y1)]
+        else:
+            pts = [(float(p[0]), float(p[1])) for p in value]
+    except (TypeError, ValueError, IndexError):
+        return None
+    if len(pts) < 3:
         return None
     # Some answers come back already normalised (0..1) instead of in pixels.
-    if max(x0, y0, x1, y1) > 1.0:
-        x0, x1, y0, y1 = x0 / w, x1 / w, y0 / h, y1 / h
-    x0, x1 = sorted((min(max(x0, 0.0), 1.0), min(max(x1, 0.0), 1.0)))
-    y0, y1 = sorted((min(max(y0, 0.0), 1.0), min(max(y1, 0.0), 1.0)))
-    if (x1 - x0) * w < 4 or (y1 - y0) * h < 4:
+    if max(max(abs(x), abs(y)) for x, y in pts) > 1.0:
+        pts = [(x / w, y / h) for x, y in pts]
+    pts = [(min(max(x, 0.0), 1.0), min(max(y, 0.0), 1.0)) for x, y in pts]
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    if (max(xs) - min(xs)) * w < 4 or (max(ys) - min(ys)) * h < 4:
         return None
-    return x0, y0, x1, y1
+    return pts
+
+
+def _frame_area(pts: list) -> float:
+    """Polygon area (shoelace), in the same units as the points."""
+    return abs(sum(x0 * y1 - x1 * y0 for (x0, y0), (x1, y1) in zip(pts, pts[1:] + pts[:1]))) / 2
 
 
 async def locate_teeth(image_data_uri: str) -> dict | None:
-    """Ask the vision model for a yellow box per tooth and a red box per quadrant.
+    """Ask the vision model for a yellow frame per tooth and a red one per quadrant.
 
-    Returns {"is_teeth", "teeth": {id: box|None}, "quadrants": {q: box|None},
-    "valid_teeth"} with boxes normalised to 0..1, or None when the model is
-    unreachable or its answer can't be parsed.
+    Returns {"is_teeth", "teeth": {id: polygon|None}, "quadrants": {q: polygon|None},
+    "valid_teeth"} with polygons normalised to 0..1, or None when the model is
+    unreachable or its answer can't be parsed. Frames may be tilted and need
+    not line up — crooked teeth are placed where they actually are.
     """
     from PIL import Image
     from services.pixel_analysis import TOOTH_IDS, QUADRANT_TEETH
@@ -942,12 +968,12 @@ async def locate_teeth(image_data_uri: str) -> dict | None:
     raw_quads = payload.get("quadrants") if isinstance(payload.get("quadrants"), dict) else {}
     teeth = {}
     for tid in TOOTH_IDS:
-        box = _parse_box(raw_teeth.get(tid), w, h)
-        if box and (box[2] - box[0]) * (box[3] - box[1]) > _MAX_BOX_AREA:
-            logger.warning(f"locate_teeth: box for {tid} too large, dropped: {box}")
-            box = None
-        teeth[tid] = box
-    quadrants = {q: _parse_box(raw_quads.get(q), w, h) for q in QUADRANT_TEETH}
+        frame = _parse_frame(raw_teeth.get(tid), w, h)
+        if frame and _frame_area(frame) > _MAX_BOX_AREA:
+            logger.warning(f"locate_teeth: frame for {tid} too large, dropped: {frame}")
+            frame = None
+        teeth[tid] = frame
+    quadrants = {q: _parse_frame(raw_quads.get(q), w, h) for q in QUADRANT_TEETH}
 
     valid = sum(1 for b in teeth.values() if b)
     logger.info(f"locate_teeth: {valid}/12 tooth boxes, "
