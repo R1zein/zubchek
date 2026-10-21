@@ -19,7 +19,7 @@ import logging
 from typing import Optional
 
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 logger = logging.getLogger(__name__)
 
@@ -64,6 +64,21 @@ MAX_SIDE = 900  # downscale large photos for speed (area % is scale-invariant)
 # Upper arch = patient's right canine (1.3) .. left canine (2.3); lower likewise.
 UPPER_TOOTH_IDS = ["1.3", "1.2", "1.1", "2.1", "2.2", "2.3"]
 LOWER_TOOTH_IDS = ["4.3", "4.2", "4.1", "3.1", "3.2", "3.3"]
+TOOTH_IDS = UPPER_TOOTH_IDS + LOWER_TOOTH_IDS
+QUADRANT_TEETH = {
+    "1": ("1.1", "1.2", "1.3"),
+    "2": ("2.1", "2.2", "2.3"),
+    "3": ("3.1", "3.2", "3.3"),
+    "4": ("4.1", "4.2", "4.3"),
+}
+
+# A tooth box where less than this share of pixels is tooth surface is a
+# misplaced box (it landed on gum, lips or the dark mouth gap) — treat the
+# tooth as unreadable rather than scoring a few stray pixels.
+MIN_BOX_TOOTH_SHARE = 0.15
+
+_BOX_YELLOW = (255, 215, 0)
+_BOX_RED = (230, 30, 30)
 
 
 def _decode_image(image_data_uri: str) -> Image.Image:
@@ -212,25 +227,32 @@ def _per_tooth(labels: np.ndarray) -> dict:
             b = int((blue & cell).sum())
             c = int((cyan & cell).sum())
             tot = w + p + b + c
-            if tot < min_cell:
-                teeth[tid] = {"missing": True, "white": 0, "purple": 0, "blue": 0,
-                              "light_blue": 0, "pollution_percentage": 0}
-            else:
-                pw = round(100 * w / tot)
-                pp = round(100 * p / tot)
-                pb = round(100 * b / tot)
-                pc = max(0, 100 - pw - pp - pb)
-                # Severity-weighted plaque index for this tooth (same as overall).
-                # Integer weights: purple(fresh)=4, blue(medium)=5, light_blue(old)=6,
-                # over max 600 — fresh plaque counts strongly so the index reflects
-                # actual coverage, not just plaque age.
-                pollution = round((pp * 4 + pb * 5 + pc * 6) / 6)
-                teeth[tid] = {"missing": False, "white": pw, "purple": pp, "blue": pb,
-                              "light_blue": pc, "pollution_percentage": min(pollution, 100)}
+            teeth[tid] = _missing_tooth() if tot < min_cell else _tooth_stats(w, p, b, c)
 
     fill_arch(0, split, UPPER_TOOTH_IDS)
     fill_arch(split, H, LOWER_TOOTH_IDS)
     return teeth
+
+
+def _missing_tooth() -> dict:
+    return {"missing": True, "white": 0, "purple": 0, "blue": 0,
+            "light_blue": 0, "pollution_percentage": 0}
+
+
+def _tooth_stats(w: int, p: int, b: int, c: int) -> dict:
+    """Colour shares + plaque index from white/purple/blue/light-blue pixel counts."""
+    tot = w + p + b + c
+    pw = round(100 * w / tot)
+    pp = round(100 * p / tot)
+    pb = round(100 * b / tot)
+    pc = max(0, 100 - pw - pp - pb)
+    # Severity-weighted plaque index for this tooth (same as overall).
+    # Integer weights: purple(fresh)=4, blue(medium)=5, light_blue(old)=6,
+    # over max 600 — fresh plaque counts strongly so the index reflects
+    # actual coverage, not just plaque age.
+    pollution = round((pp * 4 + pb * 5 + pc * 6) / 6)
+    return {"missing": False, "white": pw, "purple": pp, "blue": pb,
+            "light_blue": pc, "pollution_percentage": min(pollution, 100)}
 
 
 def _overlay_b64(labels: np.ndarray) -> str:
@@ -289,4 +311,171 @@ def analyze_teeth_pixels(image_data_uri: str, debug: bool = True) -> dict:
     }
     if debug:
         result["debug_image"] = _overlay_b64(labels)
+    return result
+
+
+# --- Per-tooth analysis inside AI-placed boxes -------------------------------
+#
+# The vision model first draws a yellow box around each of the 12 anterior
+# teeth (and a red box around each quadrant). Only pixels inside the yellow
+# boxes are classified and counted, tooth by tooth, so white walls, cheek
+# retractors, lip highlights and side teeth outside the boxes can no longer
+# pass for clean enamel and dilute the index.
+
+
+def _box_to_px(box, W: int, H: int) -> Optional[tuple]:
+    """Normalised (x0, y0, x1, y1) in 0..1 -> clamped pixel box, or None."""
+    if not box:
+        return None
+    x0 = min(max(int(round(box[0] * W)), 0), W)
+    y0 = min(max(int(round(box[1] * H)), 0), H)
+    x1 = min(max(int(round(box[2] * W)), 0), W)
+    y1 = min(max(int(round(box[3] * H)), 0), H)
+    if x1 - x0 < 3 or y1 - y0 < 3:
+        return None
+    return x0, y0, x1, y1
+
+
+def _box_owners(px_boxes: dict, H: int, W: int) -> np.ndarray:
+    """Index (into ``list(px_boxes)``) of the box owning each pixel, -1 outside.
+
+    Neighbouring boxes overlap at the interdental gaps; a pixel in the overlap
+    goes to the box whose centre it is closest to (relative to box size), so
+    every pixel is counted for exactly one tooth.
+    """
+    owner = np.full((H, W), -1, dtype=np.int8)
+    best = np.full((H, W), np.inf, dtype=np.float32)
+    for k, (x0, y0, x1, y1) in enumerate(px_boxes.values()):
+        cx, cy = (x0 + x1 - 1) / 2, (y0 + y1 - 1) / 2
+        hw, hh = max((x1 - x0) / 2, 1.0), max((y1 - y0) / 2, 1.0)
+        yy, xx = np.mgrid[y0:y1, x0:x1]
+        d = np.maximum(np.abs(xx - cx) / hw, np.abs(yy - cy) / hh)
+        sub_best = best[y0:y1, x0:x1]
+        take = d < sub_best
+        sub_best[take] = d[take]
+        owner[y0:y1, x0:x1][take] = k
+    return owner
+
+
+def _annotated_b64(img: Image.Image, px_boxes: dict, px_quadrants: dict) -> str:
+    """The photo with red quadrant boxes and yellow, numbered tooth boxes."""
+    out = img.copy()
+    draw = ImageDraw.Draw(out)
+    lw = max(2, max(out.size) // 300)
+    pad = 2 * lw  # red frames sit just outside the yellow ones so both show
+    W, H = out.size
+    for q, (x0, y0, x1, y1) in px_quadrants.items():
+        x0, y0 = max(x0 - pad, 0), max(y0 - pad, 0)
+        x1, y1 = min(x1 + pad, W), min(y1 + pad, H)
+        draw.rectangle([x0, y0, x1 - 1, y1 - 1], outline=_BOX_RED, width=lw)
+        draw.text((x0 + lw + 1, max(y0 - 12, 0)), f"Q{q}", fill=_BOX_RED)
+    for tid, (x0, y0, x1, y1) in px_boxes.items():
+        draw.rectangle([x0, y0, x1 - 1, y1 - 1], outline=_BOX_YELLOW, width=lw)
+        draw.text((x0 + lw + 1, y0 + lw + 1), tid, fill=_BOX_YELLOW)
+    buf = io.BytesIO()
+    out.save(buf, format="JPEG", quality=85)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def _boxed_overlay_b64(img: Image.Image, labels: np.ndarray, owner: np.ndarray) -> str:
+    """Label colours inside the tooth boxes, dimmed photo outside (not counted)."""
+    out = (np.asarray(img, dtype=np.uint16) // 3).astype(np.uint8)
+    inside = owner >= 0
+    for lbl, color in _OVERLAY_COLORS.items():
+        out[inside & (labels == lbl)] = color
+    buf = io.BytesIO()
+    Image.fromarray(out, "RGB").save(buf, format="PNG")
+    return "data:image/png;base64," + base64.b64encode(buf.getvalue()).decode()
+
+
+def analyze_teeth_in_boxes(
+    image_data_uri: str, tooth_boxes: dict, quadrant_boxes: Optional[dict] = None,
+    debug: bool = True,
+) -> dict:
+    """Classify pixels tooth by tooth, inside the yellow box of each tooth.
+
+    ``tooth_boxes`` maps FDI ids ("1.1" .. "4.3") to normalised
+    (x0, y0, x1, y1) boxes in 0..1, or None for a missing / hidden tooth;
+    ``quadrant_boxes`` maps "1".."4" to the red quadrant boxes the same way.
+    Returns the same shape as ``analyze_teeth_pixels``; overall percentages
+    are the sum of the per-tooth pixel counts, so they only ever include
+    surface inside the tooth boxes.
+    """
+    img = _decode_image(image_data_uri)
+    hsv = np.asarray(img.convert("HSV"))
+    labels = _classify(hsv)
+    H, W = labels.shape
+
+    px_boxes = {}
+    for tid in TOOTH_IDS:
+        b = _box_to_px((tooth_boxes or {}).get(tid), W, H)
+        if b:
+            px_boxes[tid] = b
+    owner = _box_owners(px_boxes, H, W)
+
+    keys = ("white", "purple", "blue", "light_blue", "gum_excluded", "dark_excluded", "other_excluded")
+    lbls = (L_WHITE, L_PURPLE, L_BLUE, L_CYAN, L_GUM, L_DARK, L_OTHER)
+    counts = dict.fromkeys(keys, 0)
+    tooth_counts: dict = {}
+    teeth: dict = {}
+    for k, (tid, (x0, y0, x1, y1)) in enumerate(px_boxes.items()):
+        mine = owner[y0:y1, x0:x1] == k
+        sub = labels[y0:y1, x0:x1][mine]
+        c = {key: int(np.count_nonzero(sub == lbl)) for key, lbl in zip(keys, lbls)}
+        tot = c["white"] + c["purple"] + c["blue"] + c["light_blue"]
+        if tot < max(50, MIN_BOX_TOOTH_SHARE * sub.size):
+            continue
+        tooth_counts[tid] = c
+        teeth[tid] = _tooth_stats(c["white"], c["purple"], c["blue"], c["light_blue"])
+        for key in keys:
+            counts[key] += c[key]
+    for tid in TOOTH_IDS:
+        teeth.setdefault(tid, _missing_tooth())
+
+    tooth = counts["white"] + counts["purple"] + counts["blue"] + counts["light_blue"]
+    total = int(labels.size)
+
+    def pct(n: int) -> int:
+        return round(100 * n / tooth) if tooth else 0
+
+    color_pct = {key: pct(counts[key]) for key in ("white", "purple", "blue", "light_blue")}
+
+    # Red quadrant boxes: from the model when it gave one, else the union of
+    # that quadrant's tooth boxes. Quadrant stats are summed from its teeth.
+    px_quadrants: dict = {}
+    quadrants: dict = {}
+    for q, ids in QUADRANT_TEETH.items():
+        qb = _box_to_px((quadrant_boxes or {}).get(q), W, H)
+        own = [px_boxes[t] for t in ids if t in px_boxes]
+        if not qb and own:
+            qb = (min(b[0] for b in own), min(b[1] for b in own),
+                  max(b[2] for b in own), max(b[3] for b in own))
+        if qb:
+            px_quadrants[q] = qb
+        qc = [tooth_counts[t] for t in ids if t in tooth_counts]
+        if qc:
+            quadrants[q] = _tooth_stats(*(sum(c[key] for c in qc)
+                                          for key in ("white", "purple", "blue", "light_blue")))
+        else:
+            quadrants[q] = _missing_tooth()
+
+    def norm(b) -> list:
+        return [round(b[0] / W, 4), round(b[1] / H, 4), round(b[2] / W, 4), round(b[3] / H, 4)]
+
+    result = {
+        "method": "pixel_hsv_boxes_v2",
+        "tooth_pixels": tooth,
+        "total_pixels": total,
+        "tooth_coverage_percent": round(100 * tooth / total) if total else 0,
+        "counts": counts,
+        "overall_color_percentages": color_pct,
+        "stained_area_percent": color_pct["purple"] + color_pct["blue"] + color_pct["light_blue"],
+        "teeth": teeth,
+        "quadrants": quadrants,
+        "tooth_boxes": {tid: norm(b) for tid, b in px_boxes.items()},
+        "quadrant_boxes": {q: norm(b) for q, b in px_quadrants.items()},
+    }
+    if debug:
+        result["annotated_image"] = _annotated_b64(img, px_boxes, px_quadrants)
+        result["debug_image"] = _boxed_overlay_b64(img, labels, owner)
     return result

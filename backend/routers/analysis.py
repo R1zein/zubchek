@@ -46,6 +46,10 @@ class AnalyzeResponse(BaseModel):
     risk_level: Optional[str] = None
     hygiene_level: Optional[str] = None
     teeth: Optional[dict] = None
+    quadrants: Optional[dict] = None  # per-quadrant colours/index (box method only)
+    # Yellow tooth boxes / red quadrant boxes, normalised [x0, y0, x1, y1] in 0..1
+    tooth_boxes: Optional[dict] = None
+    quadrant_boxes: Optional[dict] = None
     recommendations: Optional[list] = None
     recommendations_en: Optional[list] = None
     orthodontic_detected: bool = False
@@ -143,12 +147,16 @@ async def analyze_photo(
 ):
     """Analyze a teeth photo — deterministic pixel-level Z-Index.
 
-    Color percentages and the index are computed from pixels (accurate); the
-    LLM is used only to phrase the text recommendations (with a static
-    fallback). Photo validation is done with lenient pixel heuristics.
+    The vision model first places a yellow box on each of the 12 anterior
+    teeth (red boxes for the quadrants); colour percentages and the index are
+    then computed from the pixels inside each tooth box separately. When the
+    model can't place the boxes, the whole-photo pixel analysis is used. The
+    LLM also writes the text recommendations (with a rule-based fallback).
     """
-    from services.pixel_analysis import analyze_teeth_pixels
-    from services.teeth_analysis import compute_z_index, detect_ortho_and_recommend, summarize_findings
+    from services.pixel_analysis import analyze_teeth_pixels, analyze_teeth_in_boxes
+    from services.teeth_analysis import (
+        MIN_TOOTH_BOXES, compute_z_index, detect_ortho_and_recommend, locate_teeth, summarize_findings,
+    )
 
     try:
         if not data.image:
@@ -158,17 +166,17 @@ async def analyze_photo(
         # uploads queue here instead of all spiking RAM at once. Early
         # validation returns and errors still release the slot via `async with`.
         async with _analysis_sem:
-            # 1. Deterministic pixel color analysis
+            # 1. Whole-photo pixel classification: cheap teeth pre-check, and
+            #    the fallback result if the model can't place tooth boxes.
             try:
                 px = analyze_teeth_pixels(data.image, debug=False)
             except Exception as e:
                 logger.error(f"Pixel analysis error: {e}")
                 raise HTTPException(status_code=500, detail="Ошибка анализа. Попробуйте ещё раз.")
 
-            # 2. Pixel pre-check (teeth first, then dye). This is the ONLY
-            #    validation while the vision model is unreachable from the RU
-            #    server (Anthropic 403s here); the LLM gate below is authoritative
-            #    once AI access is restored.
+            # 2. Pixel pre-check for teeth. While the vision model is unreachable
+            #    this and the dye check below are the only validation; the LLM
+            #    gates are authoritative once AI access works.
             logger.info(
                 f"analyze gates(pixel): coverage={px.get('tooth_coverage_percent')}% "
                 f"stained={px.get('stained_area_percent')}%"
@@ -178,6 +186,28 @@ async def analyze_photo(
                     has_teeth=False, error="no_teeth",
                     message="На фото не обнаружены зубы. Пожалуйста, сфотографируйте зубы крупным планом.",
                 )
+
+            # 2b. The model boxes each tooth (yellow) and quadrant (red); then
+            #     every tooth box is classified on its own, so nothing outside
+            #     the teeth (walls, retractors, lips) counts as clean enamel.
+            loc = await locate_teeth(data.image)
+            if loc and not loc["is_teeth"]:
+                return AnalyzeResponse(
+                    has_teeth=False, error="no_teeth",
+                    message="На фото не обнаружены зубы. Пожалуйста, сфотографируйте зубы крупным планом.",
+                )
+            if loc and loc["valid_teeth"] >= MIN_TOOTH_BOXES:
+                try:
+                    px = analyze_teeth_in_boxes(data.image, loc["teeth"], loc["quadrants"], debug=False)
+                except Exception as e:
+                    logger.error(f"Per-tooth box analysis failed, using whole photo: {e}")
+            else:
+                logger.warning(
+                    f"tooth boxes unavailable ({loc['valid_teeth'] if loc else 'no AI answer'}), "
+                    "using whole-photo pixel analysis"
+                )
+            logger.info(f"analyze method={px.get('method')} stained={px.get('stained_area_percent')}%")
+
             if px.get("stained_area_percent", 0) < 2:
                 return AnalyzeResponse(
                     has_teeth=False, error="no_dye_detected",
@@ -232,6 +262,9 @@ async def analyze_photo(
                 "orthodontic_detected": rec["orthodontic_detected"],
                 "orthodontic_type": rec["orthodontic_type"],
                 "teeth": px.get("teeth"),
+                "quadrants": px.get("quadrants"),
+                "tooth_boxes": px.get("tooth_boxes"),
+                "quadrant_boxes": px.get("quadrant_boxes"),
                 "tooth_coverage_percent": px.get("tooth_coverage_percent"),
                 "stained_area_percent": px.get("stained_area_percent"),
                 "method": px.get("method"),
@@ -280,6 +313,9 @@ async def analyze_photo(
             risk_level=result["risk_level"],
             hygiene_level=result["hygiene_level"],
             teeth=result["teeth"],
+            quadrants=result["quadrants"],
+            tooth_boxes=result["tooth_boxes"],
+            quadrant_boxes=result["quadrant_boxes"],
             recommendations=recommendations,
             recommendations_en=recommendations_en,
             orthodontic_detected=result["orthodontic_detected"],
@@ -298,19 +334,27 @@ async def analyze_photo(
 
 
 @router.post("/analyze-pixels")
-async def analyze_pixels(data: AnalyzeRequest, debug: bool = Query(True)):
+async def analyze_pixels(data: AnalyzeRequest, debug: bool = Query(True), boxes: bool = Query(True)):
     """Deterministic pixel-level color analysis (HSV thresholds).
 
     Calibration/debug path — computes exact color-area percentages and (when
-    debug=true) returns a color-coded mask overlay. Does NOT call the LLM and
-    does NOT save a report.
+    debug=true) returns a color-coded mask overlay. With boxes=true the vision
+    model places the tooth/quadrant boxes first and the response also carries
+    ``annotated_image`` (yellow tooth boxes, red quadrants); boxes=false skips
+    the LLM. Does NOT save a report.
     """
     if not data.image:
         raise HTTPException(status_code=400, detail="Фото не предоставлено")
-    from services.pixel_analysis import analyze_teeth_pixels
-    from services.teeth_analysis import compute_z_index
+    from services.pixel_analysis import analyze_teeth_pixels, analyze_teeth_in_boxes
+    from services.teeth_analysis import MIN_TOOTH_BOXES, compute_z_index, locate_teeth
     try:
-        res = analyze_teeth_pixels(data.image, debug=debug)
+        loc = await locate_teeth(data.image) if boxes else None
+        if loc and loc["valid_teeth"] >= MIN_TOOTH_BOXES:
+            res = analyze_teeth_in_boxes(data.image, loc["teeth"], loc["quadrants"], debug=debug)
+        else:
+            res = analyze_teeth_pixels(data.image, debug=debug)
+        if boxes:
+            res["boxes_found"] = loc["valid_teeth"] if loc else None
         # Apply the same severity-weighted Z-Index scoring as the LLM path.
         res["z_index"] = compute_z_index(res["overall_color_percentages"])
         return res

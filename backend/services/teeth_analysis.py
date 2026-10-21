@@ -836,6 +836,130 @@ async def detect_ortho_and_recommend(
     }
 
 
+# ---------------------------------------------------------------------------
+# Tooth localisation
+#
+# Before any pixel is counted, the vision model marks where each tooth is: a
+# yellow box per anterior tooth and a red box per quadrant. The pixel analyzer
+# then scores each yellow box on its own (see pixel_analysis.analyze_teeth_in_boxes).
+# ---------------------------------------------------------------------------
+
+# Long side of the image the model sees. Kept under the API's own downscale
+# limit so the pixel coordinates it returns refer to exactly this image.
+_LOCATE_MAX_SIDE = 1024
+
+# Fewer valid tooth boxes than this means the answer is unreliable — fall back
+# to the whole-photo analysis instead of scoring the mouth from a few teeth.
+MIN_TOOTH_BOXES = 6
+
+# A single tooth never takes up more than this share of the frame; a bigger
+# box swallowed several teeth or the whole mouth.
+_MAX_BOX_AREA = 0.25
+
+_LOCATE_PROMPT = """Ты размечаешь фото передних зубов пациента после нанесения индикатора налёта. Размер изображения: {w}×{h} пикселей. Координаты — целые пиксели этого изображения, начало в левом верхнем углу, рамка [x1, y1, x2, y2] (левый верхний и правый нижний угол).
+
+Считай, что фото не зеркальное: левая сторона снимка — правая сторона пациента.
+
+ШАГ 1. is_teeth: true, если на фото есть человеческие зубы. Если нет — верни is_teeth=false и пустые quadrants и teeth.
+
+ШАГ 2. Красные рамки — 4 квадранта, каждая охватывает три передних зуба своего квадранта:
+- "1" — верхние зубы в левой половине снимка (1.1, 1.2, 1.3);
+- "2" — верхние зубы в правой половине снимка (2.1, 2.2, 2.3);
+- "3" — нижние зубы в правой половине снимка (3.1, 3.2, 3.3);
+- "4" — нижние зубы в левой половине снимка (4.1, 4.2, 4.3).
+
+ШАГ 3. Жёлтые рамки — по одной на каждый из 12 зубов. .1 — центральный резец (у средней линии), .2 — боковой резец, .3 — клык. Премоляры и дальние зубы не размечай.
+- Рамка плотно охватывает видимую переднюю поверхность коронки ТОЛЬКО этого зуба: по высоте от края десны до режущего края, по ширине от одного межзубного промежутка до другого.
+- Окрашенный налёт (фиолетовый, синий, голубой, розовый — в том числе полоска у самой десны) — часть зуба, включай его в рамку.
+- Не включай десну, губы, соседние зубы и тёмную щель между челюстями.
+- Если зуб отсутствует или полностью закрыт — null.
+
+Ответь только валидным JSON без пояснений:
+{{"is_teeth": true, "quadrants": {{"1": [x1, y1, x2, y2], "2": [...], "3": [...], "4": [...]}}, "teeth": {{"1.1": [x1, y1, x2, y2], "1.2": [...], "1.3": [...], "2.1": [...], "2.2": [...], "2.3": [...], "3.1": [...], "3.2": [...], "3.3": [...], "4.1": [...], "4.2": [...], "4.3": [...]}}}}"""
+
+
+def _parse_box(value, w: int, h: int) -> tuple | None:
+    """Model box [x1, y1, x2, y2] in pixels -> normalised 0..1 box, or None."""
+    if not isinstance(value, (list, tuple)) or len(value) != 4:
+        return None
+    try:
+        x0, y0, x1, y1 = (float(v) for v in value)
+    except (TypeError, ValueError):
+        return None
+    # Some answers come back already normalised (0..1) instead of in pixels.
+    if max(x0, y0, x1, y1) > 1.0:
+        x0, x1, y0, y1 = x0 / w, x1 / w, y0 / h, y1 / h
+    x0, x1 = sorted((min(max(x0, 0.0), 1.0), min(max(x1, 0.0), 1.0)))
+    y0, y1 = sorted((min(max(y0, 0.0), 1.0), min(max(y1, 0.0), 1.0)))
+    if (x1 - x0) * w < 4 or (y1 - y0) * h < 4:
+        return None
+    return x0, y0, x1, y1
+
+
+async def locate_teeth(image_data_uri: str) -> dict | None:
+    """Ask the vision model for a yellow box per tooth and a red box per quadrant.
+
+    Returns {"is_teeth", "teeth": {id: box|None}, "quadrants": {q: box|None},
+    "valid_teeth"} with boxes normalised to 0..1, or None when the model is
+    unreachable or its answer can't be parsed.
+    """
+    from PIL import Image
+    from services.pixel_analysis import TOOTH_IDS, QUADRANT_TEETH
+
+    compressed = compress_image_data_uri(image_data_uri, max_size=_LOCATE_MAX_SIDE, quality=90)
+    try:
+        w, h = Image.open(io.BytesIO(base64.b64decode(compressed.split(",", 1)[-1]))).size
+    except Exception as e:
+        logger.warning(f"locate_teeth: can't read image size: {e}")
+        return None
+
+    request = GenTxtRequest(
+        messages=[ChatMessage(role="user", content=[
+            {"type": "text", "text": _LOCATE_PROMPT.format(w=w, h=h)},
+            {"type": "image_url", "image_url": {"url": compressed}},
+        ])],
+        model=get_ai_model(),
+        # Thinking shares this budget on current Claude models.
+        max_tokens=16000,
+    )
+
+    payload = None
+    service = AIHubService()
+    for attempt in (1, 2):
+        try:
+            response = await service.gentxt(request)
+            payload = json.loads(extract_json_block(response.content.strip()))
+            if not isinstance(payload, dict):
+                raise ValueError("AI answer is not a JSON object")
+            break
+        except Exception as e:
+            payload = None
+            logger.warning(f"locate_teeth AI attempt {attempt} failed: {e}")
+    if payload is None:
+        return None
+
+    raw_teeth = payload.get("teeth") if isinstance(payload.get("teeth"), dict) else {}
+    raw_quads = payload.get("quadrants") if isinstance(payload.get("quadrants"), dict) else {}
+    teeth = {}
+    for tid in TOOTH_IDS:
+        box = _parse_box(raw_teeth.get(tid), w, h)
+        if box and (box[2] - box[0]) * (box[3] - box[1]) > _MAX_BOX_AREA:
+            logger.warning(f"locate_teeth: box for {tid} too large, dropped: {box}")
+            box = None
+        teeth[tid] = box
+    quadrants = {q: _parse_box(raw_quads.get(q), w, h) for q in QUADRANT_TEETH}
+
+    valid = sum(1 for b in teeth.values() if b)
+    logger.info(f"locate_teeth: {valid}/12 tooth boxes, "
+                f"{sum(1 for b in quadrants.values() if b)}/4 quadrant boxes ({w}x{h})")
+    return {
+        "is_teeth": bool(payload.get("is_teeth", True)),
+        "teeth": teeth,
+        "quadrants": quadrants,
+        "valid_teeth": valid,
+    }
+
+
 async def analyze_teeth_photo(image_data_uri: str) -> dict:
     """Analyze a teeth photo using AI multimodal capabilities with Z-Index."""
     service = AIHubService()
