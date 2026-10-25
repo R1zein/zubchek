@@ -238,7 +238,7 @@ async def analyze_photo(
             # 4. One Claude vision call: validation + orthodontic detection + recommendations
             rec = await detect_ortho_and_recommend(
                 data.image, z["pollution_percentage"], z["risk_level"], z["color_percentages"],
-                teeth=px.get("teeth"), progress=progress,
+                teeth=px.get("teeth"), progress=progress, zones=px.get("plaque_zones"),
             )
 
             logger.info(
@@ -274,6 +274,7 @@ async def analyze_photo(
                 "orthodontic_type": rec["orthodontic_type"],
                 "teeth": px.get("teeth"),
                 "quadrants": px.get("quadrants"),
+                "plaque_zones": px.get("plaque_zones"),
                 "tooth_boxes": px.get("tooth_boxes"),
                 "quadrant_boxes": px.get("quadrant_boxes"),
                 "tooth_coverage_percent": px.get("tooth_coverage_percent"),
@@ -411,6 +412,7 @@ async def get_extended_recommendations(
             analysis_data.get("color_percentages") or {},
             analysis_data.get("teeth") or None,
             int(plaque_pct or 0),
+            analysis_data.get("plaque_zones"),
         )
         teeth_info = _findings_for_prompt(findings)
 
@@ -449,7 +451,10 @@ Your tasks:
      * Attachments: gentle brushing around composite bumps, avoiding staining foods, flossing technique
      * Plates (пластинки): daily cleaning with brush and soap, removing during meals, proper storage
      * Retainers: cleaning protocol, wear schedule compliance, signs of damage
-   - Product recommendations (types of brushes, floss, irrigators)
+   - Interdental tools chosen FROM THE PHOTO, naming what you see and on which teeth: tight contacts -> floss
+     (or floss picks); open triangular gaps at the gum / exposed necks -> interdental brushes (say thin or medium);
+     crowded, rotated or overlapping teeth -> floss plus a single-tuft brush; bridges/crowns/splints -> superfloss;
+     water flosser only as an addition. Use the edge / gum-line plaque numbers above. Pick 1-2 tools, not a list.
    - Frequency and technique of brushing
    - Professional cleaning schedule
    - Diet recommendations to reduce plaque
@@ -519,7 +524,7 @@ Respond ONLY with valid JSON:
         ad = analysis_data if isinstance(analysis_data, dict) else {}
         findings = summarize_findings(
             ad.get("color_percentages") or {}, ad.get("teeth") or None,
-            int(ad.get("pollution_percentage") or 0),
+            int(ad.get("pollution_percentage") or 0), ad.get("plaque_zones"),
         )
         ortho_type = ad.get("orthodontic_type") if ad.get("orthodontic_detected") else None
         ru, en = build_rule_based_recommendations(findings, ad.get("risk_level") or "low", ortho_type)

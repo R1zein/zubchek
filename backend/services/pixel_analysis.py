@@ -487,6 +487,65 @@ def _gains(ref: np.ndarray) -> np.ndarray:
     return np.clip(WB_TARGET / np.maximum(ref, 1.0), 1.0, WB_MAX_GAIN).astype(np.float32)
 
 
+# Share of a crown's width, on each side, treated as the interdental edge.
+EDGE_SHARE = 0.25
+_TOOTH_LABELS = (L_WHITE, L_PURPLE, L_BLUE, L_CYAN)
+_STAIN_LABELS = (L_PURPLE, L_BLUE, L_CYAN)
+
+
+def _zone_counts(tid: str, sub_labels: np.ndarray, mine: np.ndarray) -> Optional[dict]:
+    """Stained vs total tooth pixels in four zones of one crown.
+
+    edge   — outer EDGE_SHARE of the crown width on each side (next to the
+             interdental spaces, where floss/brushes are needed);
+    middle — the rest of the width;
+    gum    — the third of the crown height next to the gum (top for upper
+             teeth, bottom for lower ones);
+    rest   — the other two thirds.
+    """
+    tooth_px = mine & np.isin(sub_labels, _TOOTH_LABELS)
+    ys, xs = np.nonzero(tooth_px)
+    if xs.size < 50:
+        return None
+    stained = np.isin(sub_labels[ys, xs], _STAIN_LABELS)
+    xa, xb = xs.min(), xs.max()
+    span_x = xb - xa + 1
+    edge = (xs < xa + EDGE_SHARE * span_x) | (xs > xb - EDGE_SHARE * span_x)
+    ya, yb = ys.min(), ys.max()
+    third = (yb - ya + 1) / 3
+    gum = (ys < ya + third) if tid[0] in "12" else (ys > yb - third)
+    return {
+        "edge": [int(stained[edge].sum()), int(edge.sum())],
+        "middle": [int(stained[~edge].sum()), int((~edge).sum())],
+        "gum": [int(stained[gum].sum()), int(gum.sum())],
+        "rest": [int(stained[~gum].sum()), int((~gum).sum())],
+    }
+
+
+def _zones_summary(zone_counts: dict) -> Optional[dict]:
+    """Percent of stained surface per zone, over all teeth and per tooth."""
+    if not zone_counts:
+        return None
+
+    def pct(pair):
+        return round(100 * pair[0] / pair[1]) if pair[1] else 0
+
+    total = {z: [0, 0] for z in ("edge", "middle", "gum", "rest")}
+    per_tooth = {}
+    for tid, zc in zone_counts.items():
+        for z, (s, n) in zc.items():
+            total[z][0] += s
+            total[z][1] += n
+        per_tooth[tid] = {z: pct(zc[z]) for z in zc}
+    return {
+        "edge": pct(total["edge"]),
+        "middle": pct(total["middle"]),
+        "gum": pct(total["gum"]),
+        "rest": pct(total["rest"]),
+        "teeth": per_tooth,
+    }
+
+
 def analyze_teeth_in_boxes(
     image_data_uri: str, tooth_boxes: dict, quadrant_boxes: Optional[dict] = None,
     debug: bool = True,
@@ -532,6 +591,7 @@ def analyze_teeth_in_boxes(
     lbls = (L_WHITE, L_PURPLE, L_BLUE, L_CYAN, L_GUM, L_DARK, L_OTHER)
     counts = dict.fromkeys(keys, 0)
     tooth_counts: dict = {}
+    zone_counts: dict = {}
     teeth: dict = {}
     for k, (tid, (x0, y0, mask)) in enumerate(frames.items()):
         h, w = mask.shape
@@ -543,6 +603,9 @@ def analyze_teeth_in_boxes(
             continue
         tooth_counts[tid] = c
         teeth[tid] = _tooth_stats(c["white"], c["purple"], c["blue"], c["light_blue"])
+        zc = _zone_counts(tid, labels[y0:y0 + h, x0:x0 + w], mine)
+        if zc:
+            zone_counts[tid] = zc
         for key in keys:
             counts[key] += c[key]
     for tid in TOOTH_IDS:
@@ -590,6 +653,7 @@ def analyze_teeth_in_boxes(
         "stained_area_percent": color_pct["purple"] + color_pct["blue"] + color_pct["light_blue"],
         "teeth": teeth,
         "quadrants": quadrants,
+        "plaque_zones": _zones_summary(zone_counts),
         "tooth_boxes": {tid: norm(p) for tid, p in tooth_pts.items()},
         "quadrant_boxes": {q: norm(p) for q, p in quad_pts.items()},
     }

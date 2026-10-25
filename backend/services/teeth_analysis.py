@@ -307,8 +307,13 @@ def _avg_pollution(teeth: dict, ids) -> int | None:
     return round(sum(vals) / len(vals)) if vals else None
 
 
-def summarize_findings(color_pct: dict, teeth: dict | None, pollution_pct: int) -> dict:
-    """Turn raw pixel numbers into the facts recommendations should rest on."""
+def summarize_findings(color_pct: dict, teeth: dict | None, pollution_pct: int,
+                       zones: dict | None = None) -> dict:
+    """Turn raw pixel numbers into the facts recommendations should rest on.
+
+    `zones` is pixel_analysis' plaque_zones (stained % at the crown edges vs
+    middle, and at the gum third vs the rest), when tooth frames were placed.
+    """
     purple = color_pct.get("purple", 0)
     blue = color_pct.get("blue", 0)
     old = color_pct.get("light_blue", 0)
@@ -330,6 +335,7 @@ def summarize_findings(color_pct: dict, teeth: dict | None, pollution_pct: int) 
         "right": None, "left": None,
         "worst_tooth": None,  # (id, pollution)
         "groups": {},         # key -> (key, ru, en, avg), every group with data
+        "zones": _zone_facts(zones),
     }
     if not teeth:
         return f
@@ -359,6 +365,30 @@ def summarize_findings(color_pct: dict, teeth: dict | None, pollution_pct: int) 
     return f
 
 
+# Zone gaps (percentage points) that count as "plaque concentrates here".
+_ZONE_EDGE_GAP = 10
+_ZONE_GUM_GAP = 10
+
+
+def _zone_facts(zones: dict | None) -> dict | None:
+    """Where on the crowns the plaque sits: interdental edges and gum line."""
+    if not zones or not zones.get("teeth"):
+        return None
+    edge, middle, gum, rest = zones["edge"], zones["middle"], zones["gum"], zones["rest"]
+    per = zones["teeth"]
+    edge_teeth = sorted((t for t, z in per.items() if z["edge"] - z["middle"] >= 15 and z["edge"] >= 25),
+                        key=lambda t: per[t]["edge"] - per[t]["middle"], reverse=True)
+    gum_teeth = sorted((t for t, z in per.items() if z["gum"] - z["rest"] >= 15 and z["gum"] >= 25),
+                       key=lambda t: per[t]["gum"] - per[t]["rest"], reverse=True)
+    return {
+        "edge": edge, "middle": middle, "gum": gum, "rest": rest,
+        "edge_heavy": edge - middle >= _ZONE_EDGE_GAP and edge >= 20,
+        "gum_heavy": gum - rest >= _ZONE_GUM_GAP and gum >= 20,
+        "edge_teeth": edge_teeth[:4],
+        "gum_teeth": gum_teeth[:4],
+    }
+
+
 def _findings_for_prompt(f: dict) -> str:
     """Compact, factual Russian summary of the findings for the model."""
     lines = [
@@ -378,6 +408,13 @@ def _findings_for_prompt(f: dict) -> str:
         lines.append(f"- Правая сторона пациента {f['right']}%, левая {f['left']}%.")
     if f["worst_tooth"]:
         lines.append(f"- Самый загрязнённый зуб: {f['worst_tooth'][0]} ({f['worst_tooth'][1]}%).")
+    z = f.get("zones")
+    if z:
+        lines.append(f"- Налёт у боковых краёв коронок (у межзубных промежутков): {z['edge']}% поверхности, "
+                     f"в центре коронок: {z['middle']}%."
+                     + (f" Сильнее всего у краёв: зубы {', '.join(z['edge_teeth'])}." if z["edge_teeth"] else ""))
+        lines.append(f"- Налёт в пришеечной трети (у десны): {z['gum']}%, ближе к режущему краю: {z['rest']}%."
+                     + (f" Сильнее всего у десны: зубы {', '.join(z['gum_teeth'])}." if z["gum_teeth"] else ""))
     return "\n".join(lines)
 
 
@@ -510,6 +547,64 @@ def _ortho_kind(ortho_type: str | None) -> str | None:
     if any(w in t for w in ("ретейнер", "retainer", "ретеншн")):
         return "retainer"
     return "other"
+
+
+def _interdental_recommendation(z: dict | None) -> tuple[list, list]:
+    """(ru items, en items) about floss/brushes/irrigator and the gum line."""
+    if not z:
+        return ([
+            "Щётка не очищает межзубные промежутки — а именно там начинается большая часть кариеса и "
+            "воспаления дёсен. Раз в день, лучше вечером, используйте зубную нить или межзубные ёршики "
+            "подходящего размера (ёршик должен входить без усилия, но плотно). Ирригатор — полезное "
+            "дополнение, но нить и ёршики он не заменяет."
+        ], [
+            "A toothbrush does not clean between the teeth — and that is where most cavities and gum inflammation start. "
+            "Once a day, ideally in the evening, use floss or interdental brushes of the right size (the brush should slide "
+            "in without force but fit snugly). A water flosser is a good addition but does not replace floss or brushes."
+        ])
+
+    ru, en = [], []
+    teeth_ru = f" (больше всего — зубы {', '.join(z['edge_teeth'])})" if z["edge_teeth"] else ""
+    teeth_en = f" (most on teeth {', '.join(z['edge_teeth'])})" if z["edge_teeth"] else ""
+    if z["edge_heavy"]:
+        ru.append(
+            f"Налёт скапливается у межзубных промежутков: по боковым краям коронок окрашено {z['edge']}% "
+            f"поверхности, а в центре зуба — {z['middle']}%{teeth_ru}. Щётка туда не достаёт, поэтому "
+            "раз в день, лучше вечером, проходите каждый промежуток зубной нитью (если с катушкой неудобно — "
+            "флоссерами на держателе), а там, где промежуток свободный, — межзубным ёршиком: он должен входить "
+            "без усилия, но плотно. Ирригатор полезен как дополнение, но нить и ёршики не заменяет."
+        )
+        en.append(
+            f"Plaque builds up next to the gaps between your teeth: {z['edge']}% of the crown edges are stained "
+            f"versus {z['middle']}% in the middle of the teeth{teeth_en}. A toothbrush can't reach there, so once a day, "
+            "ideally in the evening, clean every gap with floss (or a floss pick if a spool is awkward), and use an "
+            "interdental brush where the gap is open — it should slide in without force but fit snugly. A water flosser "
+            "helps as an addition but does not replace floss or brushes."
+        )
+    else:
+        ru.append(
+            f"Межзубные промежутки сейчас относительно чистые: у краёв коронок {z['edge']}% налёта против "
+            f"{z['middle']}% в центре. Сохраните это — раз в день проходите промежутки зубной нитью или "
+            "флоссерами, щётка туда не достаёт."
+        )
+        en.append(
+            f"The gaps between your teeth are relatively clean: {z['edge']}% plaque at the crown edges versus "
+            f"{z['middle']}% in the middle. Keep it that way — floss (or use floss picks) once a day; a brush can't reach there."
+        )
+    if z["gum_heavy"]:
+        g_ru = f" (зубы {', '.join(z['gum_teeth'])})" if z["gum_teeth"] else ""
+        g_en = f" (teeth {', '.join(z['gum_teeth'])})" if z["gum_teeth"] else ""
+        ru.append(
+            f"У десны налёта заметно больше: в пришеечной трети окрашено {z['gum']}% против {z['rest']}% ближе к "
+            f"режущему краю{g_ru}. Щетина не доходит до десневого края — ставьте щётку под углом 45° к десне и "
+            "делайте короткие вибрирующие движения, а линию десны дополнительно прочищайте монопучковой щёткой."
+        )
+        en.append(
+            f"There is noticeably more plaque at the gum line: {z['gum']}% of the third next to the gum is stained versus "
+            f"{z['rest']}% towards the biting edge{g_en}. The bristles are not reaching the gum margin — hold the brush at "
+            "45° to the gum with short vibrating strokes, and go along the gum line with a single-tuft brush."
+        )
+    return ru, en
 
 
 def build_rule_based_recommendations(
@@ -659,18 +754,11 @@ def build_rule_based_recommendations(
             "superfloss or an interdental brush every evening, and brush a removable retainer separately every day."
         )
 
-    # 5. Interdental cleaning — the brush never reaches there, whatever the score.
-    ru.append(
-        "Щётка не очищает межзубные промежутки — а именно там начинается большая часть кариеса и "
-        "воспаления дёсен. Раз в день, лучше вечером, используйте зубную нить или межзубные ёршики "
-        "подходящего размера (ёршик должен входить без усилия, но плотно). Ирригатор — полезное "
-        "дополнение, но нить и ёршики он не заменяет."
-    )
-    en.append(
-        "A toothbrush does not clean between the teeth — and that is where most cavities and gum inflammation start. "
-        "Once a day, ideally in the evening, use floss or interdental brushes of the right size (the brush should slide "
-        "in without force but fit snugly). A water flosser is a good addition but does not replace floss or brushes."
-    )
+    # 5. Interdental cleaning and the gum line — chosen from where the plaque
+    #    actually sits on the crowns (pixel zones), when that is known.
+    i_ru, i_en = _interdental_recommendation(f.get("zones"))
+    ru.extend(i_ru)
+    en.extend(i_en)
 
     # 6. Follow-up — what to do next and when to re-test.
     if risk_level == "high":
@@ -708,7 +796,11 @@ def build_rule_based_recommendations(
             "a professional cleaning every 6 months. Repeat the dye test every 2–3 months to keep track."
         )
 
-    return ru[:8], en[:8]
+    # Cap the list but always keep the last item (follow-up / professional
+    # cleaning) — it is the one most worth acting on.
+    if len(ru) > 8:
+        ru, en = ru[:7] + ru[-1:], en[:7] + en[-1:]
+    return ru, en
 
 
 # Appliance vocabulary (ru + en). Matched case-insensitively against sentences.
@@ -777,6 +869,14 @@ _RECS_PROMPT = """Ты — стоматолог-гигиенист. Тебе п�
 - Порядок — по важности: сначала самая большая проблема этого пациента.
 - Если зрелого налёта много — объясни, что это систематически пропускаемые зоны и риск зубного камня. Если налёт в основном свежий — что техника работает, но не хватает тщательности.
 - Если найдена ортодонтическая конструкция — отдельная рекомендация по уходу именно за ней.
+- Межзубная чистка — обязательно одна отдельная рекомендация, и средство выбирай ПО ФОТО. Рассмотри промежутки между зубами и линию десны и прямо назови, что увидел и на каких зубах:
+  • контакты плотные, промежутков не видно — зубная нить (или флоссеры на держателе, если с катушкой неудобно);
+  • видны открытые треугольные промежутки у десны («чёрные треугольники»), оголённые шейки, отступившая десна — межзубные ёршики, укажи примерный размер (тонкий / средний);
+  • скученность, повёрнутые или налезающие друг на друга зубы — нить плюс монопучковая щётка для мест, куда не достаёт обычная;
+  • мосты, коронки, шинирование — суперфлосс;
+  • ирригатор — только как дополнение (скученность, мосты, конструкции, налёт у десны), не вместо нити или ёршиков.
+  Учитывай цифры налёта у краёв коронок и у десны из данных выше. Не перечисляй все средства подряд — выбери 1–2, подходящих этому рту, и объясни, почему именно они. Если промежутки на фото не разглядеть, опирайся на цифры и так и скажи.
+- Если налёт сосредоточен у десны (см. данные) — отдельно про технику у десневого края: угол 45°, монопучковая щётка.
 - Если конструкций нет — не упоминай ортодонтию вообще: не пиши, что брекетов, элайнеров или других конструкций нет и что особый уход не нужен.
 - Обязательно скажи, когда повторить тест с красителем, и нужна ли профессиональная гигиена.
 - Пиши понятным пациенту языком, без латыни и сокращений, без markdown, без нумерации внутри строк. Не ставь диагнозов — ты оцениваешь гигиену, а не лечишь.
@@ -789,7 +889,7 @@ _RECS_PROMPT = """Ты — стоматолог-гигиенист. Тебе п�
 
 async def detect_ortho_and_recommend(
     image_data_uri: str, pollution_pct: int, risk_level: str, color_pct: dict,
-    teeth: dict | None = None, progress: dict | None = None,
+    teeth: dict | None = None, progress: dict | None = None, zones: dict | None = None,
 ) -> dict:
     """One vision call: validate the photo, detect orthodontic appliances and
     write personalised hygiene recommendations in Russian and English.
@@ -800,7 +900,7 @@ async def detect_ortho_and_recommend(
     unavailable or its answer is unusable, recommendations come from
     `build_rule_based_recommendations` (still specific to this patient).
     """
-    findings = summarize_findings(color_pct, teeth, pollution_pct)
+    findings = summarize_findings(color_pct, teeth, pollution_pct, zones)
     facts = _findings_for_prompt(findings)
     if progress:
         facts += "\n\n" + _progress_for_prompt(progress)
