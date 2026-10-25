@@ -437,6 +437,9 @@ Your tasks:
    - Palatal expanders
    - Other orthodontic devices
    Report what you see (if any). Be specific about the type.
+   If you see no appliance, set orthodontic_detected=false and do NOT mention
+   orthodontics anywhere in the recommendations — no "no braces were found,
+   so no special care is needed" items; they are useless to the patient.
 
 2. PROVIDE EXTENDED RECOMMENDATIONS (at least 6-8 detailed recommendations):
    - Specific hygiene techniques for problem areas
@@ -498,9 +501,12 @@ Respond ONLY with valid JSON:
         if payload is None:
             raise RuntimeError("AI unavailable for extended recommendations")
 
+        from services.teeth_analysis import strip_absent_ortho
+        ortho_found = bool(payload.get("orthodontic_detected", False))
         return ExtendedRecsResponse(
-            recommendations=[str(r).strip() for r in payload.get("recommendations", [])],
-            orthodontic_detected=payload.get("orthodontic_detected", False),
+            recommendations=strip_absent_ortho(
+                [str(r).strip() for r in payload.get("recommendations", [])], ortho_found),
+            orthodontic_detected=ortho_found,
             orthodontic_type=payload.get("orthodontic_type"),
         )
 

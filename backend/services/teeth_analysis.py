@@ -711,6 +711,39 @@ def build_rule_based_recommendations(
     return ru[:8], en[:8]
 
 
+# Appliance vocabulary (ru + en). Matched case-insensitively against sentences.
+_ORTHO_WORDS = re.compile(
+    r"брекет|элайнер|аттачмент|ретейнер|ретенционн|ортодонт|пластинк|расширител|"
+    r"\bкап(?:а|ы|у|е|ой|ами|ах|ам)?\b|"
+    r"\bbraces?\b|bracket|aligner|attachment|retainer|orthodont|expander",
+    re.IGNORECASE,
+)
+_SENTENCE_SPLIT = re.compile(r"(?<=[.!?…])\s+")
+
+
+def strip_absent_ortho(recs, ortho_detected: bool) -> list:
+    """Drop orthodontic talk when no appliance was found.
+
+    Models sometimes add "no braces or aligners were found, so no special care
+    is needed" despite being told not to — useless to the patient. When
+    nothing was detected, every sentence about appliances is removed; an item
+    left with nothing substantial is dropped entirely.
+    """
+    if ortho_detected or not isinstance(recs, list):
+        return recs
+    out = []
+    for r in recs:
+        text = str(r).strip()
+        if not _ORTHO_WORDS.search(text):
+            out.append(text)
+            continue
+        kept = [s for s in _SENTENCE_SPLIT.split(text) if not _ORTHO_WORDS.search(s)]
+        rest = " ".join(kept).strip()
+        if len(rest) >= 60:
+            out.append(rest)
+    return out
+
+
 def _recs_look_usable(recs) -> bool:
     """Reject empty / generic AI output so it doesn't reach the patient.
 
@@ -816,8 +849,8 @@ async def detect_ortho_and_recommend(
     is_teeth = bool(payload.get("is_teeth", True))
     ortho_detected = bool(payload.get("orthodontic_detected", False))
     ortho_type = (payload.get("orthodontic_type") or None) if ortho_detected else None
-    recs = payload.get("recommendations") or []
-    recs_en = payload.get("recommendations_en") or []
+    recs = strip_absent_ortho(payload.get("recommendations") or [], ortho_detected)
+    recs_en = strip_absent_ortho(payload.get("recommendations_en") or [], ortho_detected)
 
     source = "ai"
     if is_teeth and not (_recs_look_usable(recs) and _recs_look_usable(recs_en)):
