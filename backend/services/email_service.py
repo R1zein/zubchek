@@ -89,7 +89,7 @@ def send_code_email(to: str, code: str, purpose: str) -> bool:
         intro = "Используйте этот код, чтобы войти в свой аккаунт Zubchek."
 
     if not email_configured():
-        logger.warning("[DEV] Email code for %s (%s): %s", to, purpose, code)
+        logger.warning("Email delivery is not configured; code was not sent")
 
     html = f"""
     <div style="font-family:-apple-system,Segoe UI,Roboto,Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px;color:#1f2937">

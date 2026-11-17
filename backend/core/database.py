@@ -160,6 +160,7 @@ class DatabaseManager:
             # Configure engine based on environment (Lambda vs non-Lambda)
             engine_kwargs = {
                 "echo": settings.debug,
+                "hide_parameters": True,
             }
 
             # Check if we're in a Lambda environment

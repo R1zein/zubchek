@@ -13,6 +13,7 @@ class Users_profiles(Base):
     full_name = Column(String, nullable=True)
     clinic_name = Column(String, nullable=True)
     phone = Column(String, nullable=True)
+    password_hash = Column(String, nullable=True)
     # Email login: doctors log in with email+password; patients log in with an
     # emailed one-time code. Nullable so patients registered without an email
     # (no account) and pre-existing rows keep working. Auto-added on startup by

@@ -1,6 +1,8 @@
 import json
 import logging
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, Header, HTTPException, Response
+from services.access import optional_user, require_user, require_report_access, report_token
+from schemas.auth import UserResponse
 from pydantic import BaseModel
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -48,9 +50,11 @@ class SaveReportResponse(BaseModel):
 @router.post("/save", response_model=SaveReportResponse)
 async def save_report(
     data: SaveReportRequest,
+    current_user: UserResponse = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Save an analysis report to the database."""
+    data.user_id = str(current_user.id)
     try:
         teeth_scores_json = json.dumps(data.teeth_scores) if data.teeth_scores else None
         plaque_types_json = json.dumps(data.plaque_types) if data.plaque_types else None
@@ -88,9 +92,15 @@ async def save_report(
 @router.get("/{report_id}", response_model=ReportResponse)
 async def get_report(
     report_id: int,
+    response: Response,
+    share_token: Optional[str] = Header(None, alias="X-Report-Token"),
+    current_user: Optional[UserResponse] = Depends(optional_user),
     db: AsyncSession = Depends(get_db),
 ):
-    """Retrieve a report by ID."""
+    """Retrieve only an owned/linked report or an explicitly shared report."""
+    await require_report_access(db, report_id, current_user, share_token)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Referrer-Policy"] = "no-referrer"
     try:
         result = await db.execute(
             text("SELECT id, teeth_scores, php_index, hygiene_level, plaque_percentage, risk_level, plaque_types, recommendations, image_data, created_at, analysis_type, analysis_data FROM reports WHERE id = :id"),
@@ -126,3 +136,11 @@ async def get_report(
     except Exception as e:
         logger.error(f"Error fetching report: {e}")
         raise HTTPException(status_code=500, detail="Ошибка загрузки отчёта")
+
+@router.post("/{report_id}/share")
+async def share_report(report_id: int, response: Response,
+                       current_user: UserResponse = Depends(require_user),
+                       db: AsyncSession = Depends(get_db)):
+    await require_report_access(db, report_id, current_user)
+    response.headers["Cache-Control"] = "no-store"
+    return {"token": report_token(report_id), "expires_in_days": 7}

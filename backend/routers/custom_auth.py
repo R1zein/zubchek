@@ -9,12 +9,14 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from core.database import get_db
+from services.auth_limits import limit_auth
+from services.access import hash_password, verify_password, session_token
 from services.email_codes import issue_code, verify_code
 from services.email_service import send_code_email
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/api/v1/custom-auth", tags=["custom-auth"])
+router = APIRouter(prefix="/api/v1/custom-auth", tags=["custom-auth"], dependencies=[Depends(limit_auth)])
 
 CLINIC_PASSWORD = "logtest121"
 
@@ -54,6 +56,7 @@ class AuthResponse(BaseModel):
     """Unified response. When ``needs_verification`` is true the client must
     collect an emailed code (no session yet); otherwise session fields are set."""
     success: bool
+    access_token: Optional[str] = None
     needs_verification: bool = False
     user_id: Optional[str] = None
     role: Optional[str] = None
@@ -96,17 +99,17 @@ async def register_doctor(data: DoctorRegisterRequest, db: AsyncSession = Depend
         # Unverified attempt exists — update its details and re-send a new code.
         user_id = row[0]
         await db.execute(
-            text("UPDATE users_profiles SET full_name = :full_name, phone = :password WHERE user_id = :user_id"),
-            {"full_name": full_name, "password": password, "user_id": user_id},
+            text("UPDATE users_profiles SET full_name = :full_name, password_hash = :password WHERE user_id = :user_id"),
+            {"full_name": full_name, "password": hash_password(password), "user_id": user_id},
         )
     else:
         user_id = str(uuid.uuid4())
         await db.execute(
             text("""
-                INSERT INTO users_profiles (user_id, role, full_name, email, phone, email_verified)
+                INSERT INTO users_profiles (user_id, role, full_name, email, password_hash, email_verified)
                 VALUES (:user_id, 'doctor', :full_name, :email, :password, FALSE)
             """),
-            {"user_id": user_id, "full_name": full_name, "email": email, "password": password},
+            {"user_id": user_id, "full_name": full_name, "email": email, "password": hash_password(password)},
         )
 
     code = await issue_code(db, email, "doctor_verify")
@@ -149,6 +152,7 @@ async def verify_doctor_email(data: VerifyEmailRequest, db: AsyncSession = Depen
     return AuthResponse(
         success=True,
         user_id=doc[0],
+        access_token=session_token(doc[0]),
         role="doctor",
         full_name=doc[1],
         message="Почта подтверждена",
@@ -168,13 +172,13 @@ async def login_doctor(data: DoctorLoginRequest, db: AsyncSession = Depends(get_
         raise HTTPException(status_code=400, detail="Введите пароль")
 
     result = await db.execute(
-        text("SELECT user_id, full_name, phone, email_verified FROM users_profiles WHERE role = 'doctor' AND LOWER(TRIM(email)) = :email"),
+        text("SELECT user_id, full_name, password_hash, email_verified FROM users_profiles WHERE role = 'doctor' AND LOWER(TRIM(email)) = :email"),
         {"email": email},
     )
     row = result.fetchone()
     if not row:
         raise HTTPException(status_code=401, detail="Врач с такой почтой не найден")
-    if (row[2] or "") != password:
+    if not verify_password(password, row[2] or ""):
         raise HTTPException(status_code=401, detail="Неверный пароль")
 
     if not row[3]:
@@ -192,6 +196,7 @@ async def login_doctor(data: DoctorLoginRequest, db: AsyncSession = Depends(get_
     return AuthResponse(
         success=True,
         user_id=row[0],
+        access_token=session_token(row[0]),
         role="doctor",
         full_name=row[1],
         message="Успешный вход",
@@ -245,6 +250,7 @@ async def patient_verify_code(data: PatientVerifyCodeRequest, db: AsyncSession =
     return AuthResponse(
         success=True,
         user_id=pat[0],
+        access_token=session_token(pat[0]),
         role="patient",
         full_name=pat[1],
         birth_date=str(pat[2]) if pat[2] else None,

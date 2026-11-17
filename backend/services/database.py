@@ -39,6 +39,9 @@ async def initialize_database():
         logger.info("🔧 Database connection initialized, now creating tables if tables not exist...")
         await db_manager.create_tables()
         logger.info("🔧 Table creation completed")
+        from services.access import migrate_passwords
+        async with db_manager.async_session_maker() as session:
+            await migrate_passwords(session)
         logger.info("Database initialized successfully")
         logger.debug(f"[DB_OP] Database initialization completed in {time.time() - start_time:.4f}s")
     except Exception as e:

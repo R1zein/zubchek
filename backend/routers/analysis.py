@@ -3,7 +3,7 @@ import json
 import logging
 import os
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
@@ -27,11 +27,9 @@ _analysis_sem = asyncio.Semaphore(_ANALYSIS_CONCURRENCY)
 
 
 class AnalyzeRequest(BaseModel):
-    image: str  # Base64 data URI of the teeth photo
+    image: str = Field(max_length=20_000_000)  # Base64 data URI of the teeth photo
     birth_date: Optional[str] = None  # Kept for backward compat but not used
-    # Doctor analysing a photo for one of their patients: compare with that
-    # patient's history (the report is still saved under the doctor first and
-    # reassigned via /invite/assign-report, as before).
+    # Doctor analysing for a linked patient: save directly under that patient.
     patient_id: Optional[str] = None
 
 
@@ -53,29 +51,16 @@ class AnalyzeResponse(BaseModel):
     error: Optional[str] = None
     message: Optional[str] = None
     report_id: Optional[int] = None
+    report_token: Optional[str] = None
+    saved: bool = False
+    analysis_quality: str = "standard"
     progress: Optional[dict] = None  # change since the previous test, if any
     # Legacy compat
     php_index: Optional[float] = None
     plaque_percentage: Optional[int] = None
 
 
-async def get_optional_user(
-    x_user_id: Optional[str] = Header(None, alias="X-User-Id"),
-    x_user_role: Optional[str] = Header(None, alias="X-User-Role"),
-    x_user_name: Optional[str] = Header(None, alias="X-User-Name"),
-    current_user_id: Optional[str] = Query(None, alias="current_user_id"),
-) -> Optional[UserResponse]:
-    """Try to get current user from custom headers or query param, return None if not provided."""
-    user_id = x_user_id or current_user_id
-    if not user_id:
-        return None
-    return UserResponse(
-        id=user_id,
-        email="",
-        name=x_user_name or "",
-        role=x_user_role or "user",
-        last_login=None,
-    )
+from services.access import optional_user as get_optional_user, require_user, require_report_access, report_token
 
 
 async def _history_owner(
@@ -132,7 +117,7 @@ async def _previous_progress(db: AsyncSession, owner_id: Optional[str], findings
     """Progress vs the owner's latest pixel-analysed report, or None."""
     from services.teeth_analysis import compute_progress
 
-    if not owner_id:
+    if not owner_id or not str(findings.get("method", "")).startswith("pixel_hsv_frames"):
         return None
     try:
         row = (await db.execute(
@@ -143,7 +128,10 @@ async def _previous_progress(db: AsyncSession, owner_id: Optional[str], findings
         )).fetchone()
         if not row:
             return None
-        return compute_progress(json.loads(row[2]), row[0], row[1], findings)
+        previous = json.loads(row[2])
+        if not findings.get("method") or previous.get("method") != findings["method"]:
+            return None
+        return compute_progress(previous, row[0], row[1], findings)
     except Exception as e:  # history is a bonus — never fail the analysis over it
         logger.warning(f"progress lookup failed: {e}")
         await _safe_rollback(db)
@@ -172,6 +160,9 @@ async def analyze_photo(
     try:
         if not data.image:
             raise HTTPException(status_code=400, detail="Фото не предоставлено")
+
+        if data.patient_id and (not current_user or current_user.role != "doctor" or not await _history_owner(db, current_user, data.patient_id)):
+            raise HTTPException(403, "Пациент не привязан к вам")
 
         # Serialize the heavy work (pixel decode + Claude call) so concurrent
         # uploads queue here instead of all spiking RAM at once. Early
@@ -232,7 +223,7 @@ async def analyze_photo(
             owner_id = await _history_owner(db, current_user, data.patient_id)
             progress = await _previous_progress(
                 db, owner_id,
-                summarize_findings(z["color_percentages"], px.get("teeth"), z["pollution_percentage"]),
+                {**summarize_findings(z["color_percentages"], px.get("teeth"), z["pollution_percentage"]), "method": px.get("method")},
             )
 
             # 4. One Claude vision call: validation + orthodontic detection + recommendations
@@ -240,6 +231,8 @@ async def analyze_photo(
                 data.image, z["pollution_percentage"], z["risk_level"], z["color_percentages"],
                 teeth=px.get("teeth"), progress=progress, zones=px.get("plaque_zones"),
             )
+            if not loc and rec.get("recommendations_source") != "ai":
+                raise HTTPException(503, "Проверка фото временно недоступна. Повторите анализ позже.")
 
             logger.info(
                 f"analyze gates(LLM): is_teeth={rec.get('is_teeth')} has_dye={rec.get('has_dye')} "
@@ -280,11 +273,12 @@ async def analyze_photo(
                 "tooth_coverage_percent": px.get("tooth_coverage_percent"),
                 "stained_area_percent": px.get("stained_area_percent"),
                 "method": px.get("method"),
+                "analysis_quality": "standard" if px.get("method", "").startswith("pixel_hsv_frames") and rec.get("recommendations_source") == "ai" else "limited",
             }
 
         # 5. Save report
         report_id = None
-        user_id = str(current_user.id) if current_user else None
+        user_id = owner_id or (str(current_user.id) if current_user else None)
         pollution_pct = result["pollution_percentage"]
         # Offload the photo to object storage when configured (store a URL instead of base64);
         # falls back to the base64 data URI otherwise. Runs off the event loop.
@@ -312,7 +306,8 @@ async def analyze_photo(
             row = db_result.fetchone()
             report_id = row[0] if row else None
         except Exception as save_err:
-            logger.error(f"Failed to save report: {save_err}")
+            await db.rollback()
+            logger.error("Failed to save report: %s", type(save_err).__name__)
 
         return AnalyzeResponse(
             has_teeth=True,
@@ -330,6 +325,9 @@ async def analyze_photo(
             orthodontic_detected=result["orthodontic_detected"],
             orthodontic_type=result["orthodontic_type"],
             report_id=report_id,
+            report_token=report_token(report_id) if report_id and not current_user else None,
+            saved=bool(report_id),
+            analysis_quality=result["analysis_quality"],
             progress=progress,
             php_index=pollution_pct / 100.0 if pollution_pct else None,
             plaque_percentage=pollution_pct,
@@ -343,7 +341,7 @@ async def analyze_photo(
 
 
 @router.post("/analyze-pixels")
-async def analyze_pixels(data: AnalyzeRequest, debug: bool = Query(True), boxes: bool = Query(True)):
+async def analyze_pixels(data: AnalyzeRequest, debug: bool = Query(True), boxes: bool = Query(True), current_user: UserResponse = Depends(require_user)):
     """Deterministic pixel-level color analysis (HSV thresholds).
 
     Calibration/debug path — computes exact color-area percentages and (when
@@ -386,9 +384,11 @@ class ExtendedRecsResponse(BaseModel):
 @router.post("/extended-recommendations", response_model=ExtendedRecsResponse)
 async def get_extended_recommendations(
     data: ExtendedRecsRequest,
+    current_user: UserResponse = Depends(require_user),
     db: AsyncSession = Depends(get_db),
 ):
     """Generate extended AI recommendations for a report, including orthodontic detection."""
+    await require_report_access(db, data.report_id, current_user)
     analysis_data: dict = {}
     try:
         # Fetch report with image

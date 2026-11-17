@@ -202,21 +202,6 @@ export default function DoctorDashboard() {
         return;
       }
 
-      if (result.report_id) {
-        try {
-          await client.apiCall.invoke({
-            url: `/api/v1/invite/assign-report?current_user_id=${encodeURIComponent(session.user_id)}`,
-            method: "POST",
-            data: {
-              report_id: result.report_id,
-              patient_id: selectedPatient.patient_id,
-            },
-          });
-        } catch (err) {
-          console.error("Failed to assign report:", err);
-        }
-      }
-
       navigate("/results", {
         state: {
           analysisResult: result,

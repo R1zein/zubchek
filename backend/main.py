@@ -7,7 +7,8 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 
 from core.config import settings
-from fastapi import FastAPI, HTTPException, Request, status
+from fastapi import Depends, FastAPI, HTTPException, Request, status
+from dependencies.auth import get_admin_user
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.routing import APIRouter
@@ -38,7 +39,7 @@ def setup_logging():
 
     # Configure the root logger
     logging.basicConfig(
-        level=logging.DEBUG,
+        level=logging.INFO,
         format=log_format,
         handlers=[
             # File handler
@@ -89,13 +90,22 @@ app = FastAPI(
 # MODULE_MIDDLEWARE_START
 app.add_middleware(
     CORSMiddleware,
-    allow_origin_regex=r".*",
+    allow_origins=list({os.getenv("FRONTEND_URL", "https://zubchek.com").rstrip("/"), "https://zubchek.com", "https://www.zubchek.com", "http://localhost:3000"}),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
     expose_headers=["*"],
 )
 # MODULE_MIDDLEWARE_END
+
+
+@app.middleware("http")
+async def private_response_headers(request: Request, call_next):
+    response = await call_next(request)
+    if request.url.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+        response.headers["Referrer-Policy"] = "no-referrer"
+    return response
 
 
 # Auto-discover and include all routers from the local `routers` package
@@ -133,7 +143,8 @@ def include_routers_from_package(app: FastAPI, package_name: str = "routers") ->
             attr = getattr(module, attr_name)
 
             if isinstance(attr, APIRouter):
-                app.include_router(attr)
+                extra = [Depends(get_admin_user)] if attr.prefix.startswith(("/api/v1/entities", "/api/v1/aihub", "/api/v1/storage")) else []
+                app.include_router(attr, dependencies=extra)
                 discovered += 1
                 logger.info("Included router: %s.%s", module_name, attr_name)
             elif isinstance(attr, (list, tuple)):

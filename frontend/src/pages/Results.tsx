@@ -1,10 +1,11 @@
-import { useRef, useState, useEffect } from "react";
+import { useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { AlertTriangle, Download, FileText, Image as ImageIcon, Send, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getSession, client } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import ShareReportButton from "@/components/ShareReportButton";
 import AppHeader from "@/components/AppHeader";
 import ProgressCard, { type Progress } from "@/components/ProgressCard";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -49,6 +50,9 @@ interface AnalysisResult {
   orthodontic_detected?: boolean;
   orthodontic_type?: string | null;
   report_id?: number;
+  report_token?: string;
+  saved?: boolean;
+  analysis_quality?: string;
   progress?: Progress | null;
   error?: string;
   message?: string;
@@ -71,28 +75,6 @@ export default function Results() {
     imageDataUri: string;
     assignedPatient?: { id: string; name: string; email?: string | null } | null;
   }) || {};
-
-  useEffect(() => {
-    const assignReport = async () => {
-      if (!assignedPatient || !analysisResult?.report_id) return;
-      const session = getSession();
-      if (!session || session.role !== "doctor") return;
-
-      try {
-        await client.apiCall.invoke({
-          url: `/api/v1/invite/assign-report?current_user_id=${encodeURIComponent(session.user_id)}`,
-          method: "POST",
-          data: {
-            report_id: analysisResult.report_id,
-            patient_id: assignedPatient.id,
-          },
-        });
-      } catch (err) {
-        console.error("Failed to assign report to patient:", err);
-      }
-    };
-    assignReport();
-  }, [assignedPatient, analysisResult?.report_id]);
 
   // Render a DOM element to a canvas in the LIGHT theme (so the export isn't
   // dark), restoring the theme afterwards. html2canvas is imported lazily so it
@@ -244,6 +226,16 @@ export default function Results() {
       {/* Content */}
       <main className="flex-1 px-4 sm:px-6 lg:px-8 py-4 sm:py-6 max-w-lg lg:max-w-4xl mx-auto w-full">
         <div ref={reportRef} id="report-printable" className="bg-white dark:bg-gray-900 p-4 sm:p-6">
+          {analysisResult.saved === false && (
+            <div role="alert" className="mb-4 rounded-lg bg-amber-50 p-3 text-amber-900">
+              {lang === "ru" ? "Отчёт не сохранился в истории. Скачайте его сейчас и повторите попытку позже." : "The report was not saved. Download it now and try again later."}
+            </div>
+          )}
+          {analysisResult.analysis_quality === "limited" && (
+            <div role="status" className="mb-4 rounded-lg bg-amber-50 p-3 text-amber-900">
+              {lang === "ru" ? "Оценка предварительная: часть проверки фото недоступна. Для надёжного сравнения повторите анализ позже." : "Preliminary assessment: part of the photo check was unavailable. Repeat the analysis later for a reliable comparison."}
+            </div>
+          )}
           {/* PDF page 1 — general index + per-tooth */}
           <div ref={page1Ref}>
           <h2 className="text-xl sm:text-2xl font-bold text-gray-900 dark:text-white mb-4 sm:mb-6">{dateStr}</h2>
@@ -404,6 +396,7 @@ export default function Results() {
         </div>
 
         <div className="no-print flex flex-col gap-3 mt-4 sm:mt-6">
+          <ShareReportButton reportId={analysisResult.report_id} existingToken={analysisResult.report_token} />
           <Button
             onClick={() => setDownloadOpen(true)}
             className="w-full bg-purple-600 hover:bg-purple-700 text-white py-5 sm:py-6 text-base sm:text-lg rounded-xl"

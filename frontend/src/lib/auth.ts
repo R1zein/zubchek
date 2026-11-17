@@ -4,6 +4,7 @@ const client = createClient();
 
 export interface UserSession {
   user_id: string;
+  access_token: string;
   role: "doctor" | "patient";
   full_name: string;
   birth_date?: string | null;
@@ -15,7 +16,9 @@ export function getSession(): UserSession | null {
   try {
     const raw = localStorage.getItem(SESSION_KEY);
     if (!raw) return null;
-    return JSON.parse(raw) as UserSession;
+    const session = JSON.parse(raw) as UserSession;
+    if (!session.access_token) { localStorage.removeItem(SESSION_KEY); return null; }
+    return session;
   } catch {
     return null;
   }
@@ -30,21 +33,18 @@ export function clearSession(): void {
 }
 
 /**
- * Get custom auth headers to send with API calls.
- * These headers identify the user to the backend.
+ * Get the signed session header for API calls.
  */
 export function getAuthHeaders(): Record<string, string> {
   const session = getSession();
   if (!session) return {};
   return {
-    "X-User-Id": session.user_id,
-    "X-User-Role": session.role,
-    "X-User-Name": session.full_name,
+    Authorization: `Bearer ${session.access_token}`,
   };
 }
 
 /**
- * Make an authenticated API call with custom session headers.
+ * Make an authenticated API call with the signed session.
  */
 export async function authApiCall(params: {
   url: string;
@@ -55,10 +55,8 @@ export async function authApiCall(params: {
   const session = getSession();
   const headers = session
     ? {
-        "X-User-Id": session.user_id,
-        "X-User-Role": session.role,
-        "X-User-Name": session.full_name,
-      }
+        Authorization: `Bearer ${session.access_token}`,
+              }
     : {};
 
   return client.apiCall.invoke({
@@ -114,6 +112,7 @@ function toAuthResult(body: any): AuthResult {
   }
   const session: UserSession = {
     user_id: body.user_id,
+    access_token: body.access_token,
     role: body.role,
     full_name: body.full_name,
     birth_date: body.birth_date || null,

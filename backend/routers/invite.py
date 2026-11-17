@@ -383,8 +383,8 @@ async def assign_report_to_patient(
 
     # Update the report's user_id to the patient
     update_result = await db.execute(
-        text("UPDATE reports SET user_id = :patient_id WHERE id = :report_id"),
-        {"patient_id": data.patient_id, "report_id": data.report_id},
+        text("UPDATE reports SET user_id = :patient_id WHERE id = :report_id AND (user_id = :doctor_id OR user_id = :patient_id)"),
+        {"patient_id": data.patient_id, "report_id": data.report_id, "doctor_id": str(current_user.id)},
     )
     await db.commit()
 

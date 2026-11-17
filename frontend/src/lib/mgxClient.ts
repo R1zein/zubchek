@@ -24,6 +24,13 @@ interface InvokeParams {
   };
 }
 
+function sessionHeaders(): Record<string, string> {
+  try {
+    const session = JSON.parse(localStorage.getItem('zubchek_session') || 'null');
+    return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {};
+  } catch { return {}; }
+}
+
 export function createClient() {
   return {
     apiCall: {
@@ -45,13 +52,20 @@ export function createClient() {
           baseURL: getAPIBaseURL(),
           url,
           method: method as AxiosRequestConfig['method'],
-          headers: options.headers ?? {},
+          headers: { ...sessionHeaders(), ...options.headers },
           // GET requests carry their params in the URL string already.
           data: isGet ? undefined : body,
           timeout: options.timeout,
         };
 
-        return axios(config);
+        try {
+          return await axios(config);
+        } catch (error) {
+          if (axios.isAxiosError(error) && error.response?.status === 401) {
+            localStorage.removeItem('zubchek_session');
+          }
+          throw error;
+        }
       },
     },
     auth: {

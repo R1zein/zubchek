@@ -5,12 +5,19 @@ A code is 6 digits, valid for 15 minutes, and a fresh code for the same
 (email, purpose) replaces any previous one.
 """
 import secrets
+import hmac
+import hashlib
+from core.config import settings
 from datetime import datetime, timedelta, timezone
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 CODE_TTL_MINUTES = 15
+
+def code_digest(email, code, purpose):
+    return hmac.new(settings.jwt_secret_key.encode(), f"{email}:{purpose}:{code}".encode(), hashlib.sha256).hexdigest()
+
 
 
 def generate_code() -> str:
@@ -35,7 +42,7 @@ async def issue_code(db: AsyncSession, email: str, purpose: str) -> str:
             INSERT INTO email_codes (email, code, purpose, expires_at)
             VALUES (:email, :code, :purpose, :expires_at)
         """),
-        {"email": email, "code": code, "purpose": purpose, "expires_at": expires_at},
+        {"email": email, "code": code_digest(email, code, purpose), "purpose": purpose, "expires_at": expires_at},
     )
     return code
 
@@ -47,26 +54,16 @@ async def verify_code(db: AsyncSession, email: str, code: str, purpose: str) -> 
     """
     email = email.strip().lower()
     code = (code or "").strip()
-    row = await db.execute(
-        text("""
-            SELECT id, expires_at FROM email_codes
-            WHERE LOWER(email) = :email AND purpose = :purpose AND code = :code
-            ORDER BY id DESC LIMIT 1
-        """),
-        {"email": email, "purpose": purpose, "code": code},
-    )
+    if len(code) != 6 or not code.isdigit():
+        return False
+    # DELETE RETURNING consumes a code atomically, even under concurrent requests.
+    row = await db.execute(text("DELETE FROM email_codes WHERE LOWER(email) = :email AND purpose = :purpose AND (code = :digest OR code = :legacy) RETURNING expires_at"), {"email": email, "purpose": purpose, "digest": code_digest(email, code, purpose), "legacy": code})
     hit = row.fetchone()
     if not hit:
         return False
-
-    expires_at = hit[1]
-    now = datetime.now(timezone.utc)
-    # expires_at may be naive depending on the driver; normalize to aware UTC.
-    if expires_at.tzinfo is None:
-        expires_at = expires_at.replace(tzinfo=timezone.utc)
-    if expires_at < now:
-        await db.execute(text("DELETE FROM email_codes WHERE id = :id"), {"id": hit[0]})
-        return False
-
-    await db.execute(text("DELETE FROM email_codes WHERE id = :id"), {"id": hit[0]})
-    return True
+    expires = hit[0]
+    if isinstance(expires, str):
+        expires = datetime.fromisoformat(expires)
+    if expires.tzinfo is None:
+        expires = expires.replace(tzinfo=timezone.utc)
+    return expires >= datetime.now(timezone.utc)

@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { getSession } from "@/lib/auth";
 import { useToast } from "@/hooks/use-toast";
+import ShareReportButton from "@/components/ShareReportButton";
 import AppHeader from "@/components/AppHeader";
 import ProgressCard, { type Progress } from "@/components/ProgressCard";
 import { useLanguage } from "@/contexts/LanguageContext";
@@ -71,6 +72,7 @@ interface ReportData {
 export default function SharedReport() {
   const { reportId } = useParams<{ reportId: string }>();
   const navigate = useNavigate();
+  const [shareToken] = useState(() => new URLSearchParams(window.location.hash.slice(1)).get("token"));
   const { t, lang } = useLanguage();
   const { toast } = useToast();
   const [report, setReport] = useState<ReportData | null>(null);
@@ -88,6 +90,7 @@ export default function SharedReport() {
       try {
         const response = await client.apiCall.invoke({
           url: `/api/v1/reports/${reportId}`,
+          options: shareToken ? { headers: { "X-Report-Token": shareToken, Authorization: "" } } : undefined,
           method: "GET",
           data: {},
         });
@@ -112,7 +115,7 @@ export default function SharedReport() {
     if (reportId) {
       fetchReport();
     }
-  }, [reportId]);
+  }, [reportId, shareToken]);
 
   // If a doctor is viewing this report, check whether the patient has an email
   // (so we can show the "Send report to patient" button).
@@ -133,7 +136,7 @@ export default function SharedReport() {
       }
     };
     checkRecipient();
-  }, [reportId]);
+  }, [reportId, shareToken]);
 
   // Print the report to a real, paginated PDF (see Results.tsx for rationale).
   const captureToCanvas = async (el: HTMLElement) => {
@@ -253,6 +256,7 @@ export default function SharedReport() {
         <p className="text-base sm:text-lg text-gray-600 dark:text-gray-300 mb-4">
           {error || t("report_not_found")}
         </p>
+        <Button className="mb-3" onClick={() => navigate("/role-selection")}>{lang === "ru" ? "Войти в аккаунт" : "Sign in"}</Button>
         <Button onClick={() => navigate("/")} variant="outline">
           {t("return_home")}
         </Button>
@@ -463,6 +467,7 @@ export default function SharedReport() {
         </div>
 
         <div className="no-print flex flex-col gap-3 mt-4 sm:mt-6">
+          <ShareReportButton reportId={Number(reportId)} existingToken={shareToken || undefined} />
           <Button
             onClick={() => setDownloadOpen(true)}
             className="w-full bg-purple-600 hover:bg-purple-700 text-white py-5 sm:py-6 text-base sm:text-lg rounded-xl"

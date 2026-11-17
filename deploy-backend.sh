@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
-# Deploy the committed backend to the VPS and point it at the AI relay.
+# Deploy the committed backend, preserving the working AI configuration.
 #
 #   bash deploy-backend.sh
 #
 # What it does (one SSH connection — the server drops rapid reconnects):
 #   1. backs up /opt/zubchek/backend and /opt/zubchek/.env
 #   2. uploads `git HEAD:backend` (uncommitted changes are NOT deployed)
-#   3. sets APP_AI_BASE_URL from relay/.relay-prefix and APP_AI_MODEL
+#   3. backs up the database; optionally sets MODEL when explicitly provided
 #   4. rebuilds + restarts the backend container
 #   5. checks /health and makes one tiny real AI call through the relay
 #
@@ -16,25 +16,23 @@
 set -euo pipefail
 
 SERVER=root@104.171.132.55
-RELAY_HOST=https://zubchek-ai.bdnj7916.workers.dev
-MODEL=${MODEL:-claude-sonnet-5-5}
+MODEL=${MODEL:-}
+[[ "$MODEL" =~ ^[A-Za-z0-9._:/-]*$ ]] || { echo "Invalid MODEL"; exit 1; }
 
 cd "$(dirname "$0")"
-[ -s relay/.relay-prefix ] || { echo "relay/.relay-prefix missing — see DEPLOY.md §4"; exit 1; }
 
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 git archive --format=tar -o "$tmp/deploy.tar" HEAD backend ':(exclude)backend/logs'
-mkdir -p "$tmp/_deploy"
-cp relay/.relay-prefix "$tmp/_deploy/relay-prefix"
-tar --append -f "$tmp/deploy.tar" -C "$tmp" _deploy/relay-prefix
-
-echo "Deploying $(git log --oneline -1) with model $MODEL ..."
-ssh -o ServerAliveInterval=15 "$SERVER" "MODEL='$MODEL' RELAY_HOST='$RELAY_HOST' bash -s" < <(
+echo "Deploying $(git log --oneline -1) with model ${MODEL:-unchanged} ..."
+ssh -o ConnectTimeout=15 -o ServerAliveInterval=15 "$SERVER" "MODEL='$MODEL' bash -s" < <(
 cat <<'REMOTE'
 set -euo pipefail
 cd /opt/zubchek
+umask 077
 stamp=$(date +%Y%m%d-%H%M%S)
+docker compose exec -T db sh -c 'pg_dump -U "$POSTGRES_USER" "$POSTGRES_DB"' | gzip > "db.bak-$stamp.sql.gz"
+echo "database backup: db.bak-$stamp.sql.gz"
 cp -a backend "backend.bak-$stamp"
 cp -a .env ".env.bak-$stamp"
 echo "backups: backend.bak-$stamp .env.bak-$stamp"
@@ -49,20 +47,31 @@ tar -x -f /tmp/zdeploy/deploy.tar -C /tmp/zdeploy
 cp -a /tmp/zdeploy/backend/. backend/
 rm -f backend/services/r2_storage.py backend/railway.json
 
-prefix=$(tr -d '\r\n' < /tmp/zdeploy/_deploy/relay-prefix)
-sed -i "s#^APP_AI_BASE_URL=.*#APP_AI_BASE_URL=${RELAY_HOST}/${prefix}/v1#" .env
-sed -i "s#^APP_AI_MODEL=.*#APP_AI_MODEL=${MODEL}#" .env
+if [ -n "$MODEL" ]; then
+  sed -i "s#^APP_AI_MODEL=.*#APP_AI_MODEL=${MODEL}#" .env
+fi
 rm -rf /tmp/zdeploy
-echo "env: model=$(grep -E '^APP_AI_MODEL=' .env | cut -d= -f2), base=${RELAY_HOST}/<prefix>/v1"
+echo "AI configuration preserved (unless MODEL explicitly supplied)"
 
 docker compose build backend 2>&1 | tail -2
 docker compose up -d backend 2>&1 | tail -1
-sleep 10
+for attempt in $(seq 1 45); do
+  if docker compose exec -T backend python -c 'import urllib.request; urllib.request.urlopen("http://localhost:8000/health", timeout=2)' >/dev/null 2>&1; then break; fi
+  sleep 2
+done
 docker compose ps --format '{{.Service}}: {{.Status}}'
 
 docker compose exec -T backend python - <<'PY'
-import asyncio, json, urllib.request
+import asyncio, json, urllib.request, urllib.error
 print("health:", urllib.request.urlopen("http://localhost:8000/health", timeout=10).read().decode())
+for path, expected in [("/api/v1/reports/1", 404), ("/api/v1/entities/users_profiles", 401)]:
+    try:
+        response = urllib.request.urlopen("http://localhost:8000" + path, timeout=10)
+        status = response.status
+    except urllib.error.HTTPError as e:
+        status = e.code
+    assert status == expected, f"Access check failed: {path} -> {status}"
+print("Report access protection: OK")
 from services.aihub import AIHubService
 from schemas.aihub import GenTxtRequest, ChatMessage
 from services.teeth_analysis import get_ai_model
